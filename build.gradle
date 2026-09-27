@@ -1,0 +1,193 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    id 'org.parchmentmc.librarian.forgegradle' version '1.+'
+    id 'org.spongepowered.mixin' version '0.7.+'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
+minecraft {
+    mappings channel: mapping_channel, version: mapping_version
+
+    copyIdeResources = true
+
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+
+            // Mixin needs the refmap remapped into SRG at dev runtime.
+            property 'mixin.env.remapRefMap', 'true'
+            property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
+
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        client {
+            property 'forge.enabledGameTestNamespaces', mod_id
+        }
+
+        server {
+            property 'forge.enabledGameTestNamespaces', mod_id
+            args '--nogui'
+        }
+
+        gameTestServer {
+            property 'forge.enabledGameTestNamespaces', mod_id
+            // Its own directory, so automated runs never rotate the logs or delete the world
+            // of a manual runServer session.
+            workingDirectory project.file('run-gametest')
+        }
+
+        data {
+            workingDirectory project.file('run-data')
+            args '--mod', mod_id, '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+        }
+    }
+}
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+mixin {
+    add sourceSets.main, "${mod_id}.refmap.json"
+    config "${mod_id}.mixins.json"
+}
+
+repositories {
+    // Camafy, the shared library, is published to the local Maven repository.
+    mavenLocal {
+        content { includeGroup 'net.camacraft.camafy' }
+    }
+    // Only for the opt-in -PvanillaBackport dev runs.
+    maven {
+        name = 'Modrinth'
+        url = 'https://api.modrinth.com/maven'
+        content { includeGroup 'maven.modrinth' }
+    }
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
+
+    implementation fg.deobf("net.camacraft.camafy:camafy:${camafy_version}")
+
+    // Vanilla Backport (and the Platform library it needs) in dev runs, opt-in with
+    // -PvanillaBackport. Unleashed Lead never compiles against it: it detects the mod at
+    // runtime and talks to it by reflection (compat/VanillaBackport.java), so this only puts the
+    // real thing behind the compatibility gametests.
+    if (project.hasProperty('vanillaBackport')) {
+        runtimeOnly fg.deobf("maven.modrinth:vanillabackport:${vanilla_backport_modrinth_version}")
+        runtimeOnly fg.deobf("maven.modrinth:platform:${platform_modrinth_version}")
+        runtimeOnly fg.deobf("io.github.llamalad7:mixinextras-forge:${mixinextras_version}")
+    }
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    var replaceProperties = [
+            minecraft_version: minecraft_version, minecraft_version_range: minecraft_version_range,
+            forge_version: forge_version, forge_version_range: forge_version_range,
+            loader_version_range: loader_version_range,
+            mod_id: mod_id, mod_name: mod_name, mod_license: mod_license, mod_version: mod_version,
+            mod_authors: mod_authors, mod_description: mod_description,
+            camafy_version_range: camafy_version_range,
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand replaceProperties + [project: project]
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes([
+                'Specification-Title'     : mod_id,
+                'Specification-Vendor'    : mod_authors,
+                'Specification-Version'   : '1',
+                'Implementation-Title'    : project.name,
+                'Implementation-Version'  : project.jar.archiveVersion,
+                'Implementation-Vendor'   : mod_authors,
+                'Implementation-Timestamp': new Date().format("yyyy-MM-dd'T'HH:mm:ssZ"),
+                'MixinConfigs'            : "${mod_id}.mixins.json"
+        ])
+    }
+
+    finalizedBy 'reobfJar'
+}
+
+/*
+ * Every gametest run starts from a fresh, flat, fixed-seed, empty world (the same setup as MKW
+ * Mobility's suite): a dedicated gametest server otherwise generates normal terrain on a random
+ * seed, and gravel or sand hanging over a carved plot can fall into it.
+ */
+tasks.register('cleanGameTestWorld', Delete) {
+    group = 'verification'
+    description = 'Deletes the saved gametest world so each run starts clean.'
+    delete file('run-gametest/world')
+}
+
+tasks.register('gameTestServerProperties') {
+    group = 'verification'
+    description = 'Forces the gametest world to be flat, fixed-seed and empty.'
+
+    doLast {
+        def file = file('run-gametest/server.properties')
+        file.parentFile.mkdirs()
+
+        def props = new Properties()
+        if (file.exists()) {
+            file.withInputStream { props.load(it) }
+        }
+
+        props.setProperty('level-type', 'minecraft:flat')
+        props.setProperty('level-seed', '0')
+        props.setProperty('generate-structures', 'false')
+        props.setProperty('spawn-monsters', 'false')
+        props.setProperty('spawn-animals', 'false')
+        props.setProperty('spawn-npcs', 'false')
+
+        file.withOutputStream {
+            props.store(it, 'Written by gameTestServerProperties -- see build.gradle')
+        }
+    }
+}
+
+tasks.matching { it.name == 'runGameTestServer' }.configureEach {
+    dependsOn 'cleanGameTestWorld'
+    dependsOn 'gameTestServerProperties'
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            artifact jar
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/mcmodsrepo"
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

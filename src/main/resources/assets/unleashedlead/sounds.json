@@ -1,0 +1,32 @@
+{
+  "item.lead.tied": {
+    "sounds": [
+      "minecraft:entity/leashknot/place1",
+      "minecraft:entity/leashknot/place2",
+      "minecraft:entity/leashknot/place3"
+    ],
+    "subtitle": "subtitles.unleashedlead.item.lead.tied"
+  },
+  "item.lead.untied": {
+    "sounds": [
+      "minecraft:entity/leashknot/break1",
+      "minecraft:entity/leashknot/break2",
+      "minecraft:entity/leashknot/break3"
+    ],
+    "subtitle": "subtitles.unleashedlead.item.lead.untied"
+  },
+  "item.lead.break": {
+    "sounds": [
+      { "name": "minecraft:entity/leashknot/break1", "pitch": 0.75 },
+      { "name": "minecraft:entity/leashknot/break2", "pitch": 0.75 },
+      { "name": "minecraft:entity/leashknot/break3", "pitch": 0.75 }
+    ],
+    "subtitle": "subtitles.unleashedlead.item.lead.break"
+  },
+  "item.shears.snip": {
+    "sounds": [
+      "minecraft:mob/sheep/shear"
+    ],
+    "subtitle": "subtitles.unleashedlead.item.shears.snip"
+  }
+}

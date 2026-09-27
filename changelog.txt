@@ -1,0 +1,43 @@
+All notable changes to Unleashed Lead are documented in this file.
+
+The format is based on Keep a Changelog (https://keepachangelog.com/en/1.0.0/),
+and this project adheres to Semantic Versioning (https://semver.org/spec/v2.0.0.html).
+
+## [1.0.0] - 2026-09-27
+
+First release: Bedrock-style leads and the Java 1.21 to 1.21.6 lead changes on Forge 1.20.1.
+
+### Added
+- Rope rendering. Every lead is a simulated rope (position-based dynamics) that:
+  - sags along local gravity, sways, and pays out and reels in slack;
+  - drapes over blocks (fences at their visible height) and wraps around posts;
+  - is twice vanilla's thickness, with a square cross-section, the two-tone stripes and light taken at each point along it;
+  - is interpolated between ticks and pinned exactly to hand and collar every frame;
+  - is culled by its own bounds, not by either end;
+  - is simulated only near the camera (distance and count limits). Further ropes are drawn as a fixed curve.
+- Elastic leash physics:
+  - free within 5 blocks, a spring and outward damper past it, snapping at 12, measured centre to centre;
+  - a mob hanging from a knot swings like a pendulum;
+  - no fall damage builds up while a lead carries an entity;
+  - dragged entities turn toward the holder;
+  - a player-steered boat is not pulled (optional).
+- Leashable boats, chest boats and bamboo rafts: saved with the world, synced to clients, and tied to fences like mobs.
+- Mob-to-mob leads (sneak-use a mob while holding leashed mobs).
+- Shears cut an entity's lead and every lead tied to it. A dispenser with shears does it too.
+- Using a lead on an entity tied to a knot or a mob takes it over. Leads can't be taken from another player.
+- 1.21.6 knot rules: using a knot or fence with nothing to tie takes its leads, sneak-use only ties, and empty knots disappear.
+- Knots break the moment their fence is removed.
+- A firework boost while gliding breaks the leads you hold.
+- The 1.21.6 lead recipe (5 string, 2 leads), toggleable, with the old recipe as fallback.
+- Sounds with subtitles: "Lead tied", "Lead untied", "Lead snaps" and "Shears snip", using vanilla's own leash-knot audio.
+- Common, server and client config files for every feature and every tuning value.
+- Built on Camafy:
+  - gravity bridge (Gravity Unbound);
+  - Valkyrien Skies bridge: knots on ship fences work, and ropes are drawn in world space;
+  - physics ownership: entities whose motion another mod owns are never leashed or pulled, and Full Stop gets a G_FORCE claim while a lead is taut;
+  - minigame policies;
+  - network channel and config helpers.
+- Vanilla Backport compatibility:
+  - Vanilla Backport keeps its leash model, happy ghast and quad-lead physics.
+  - Unleashed Lead plugs its pull, distances and ship handling into Vanilla Backport's hooks, draws every lead (Vanilla Backport's renderer is switched off), handles lead interactions first, and wins the recipe.
+- Gametests, 23 in total: snap distance, free length, pendulum, fall damage, motion claims, boats (tie, save/load, drag and turn, fence), shears, dispensers, mob-to-mob, take-over, knots, fireworks, the recipe shape, the rope solver (length, drape, moving end) and the Vanilla Backport split. Run plain and with `-PvanillaBackport`.

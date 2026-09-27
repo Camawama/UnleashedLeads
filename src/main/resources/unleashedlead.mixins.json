@@ -1,0 +1,25 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "net.camacraft.unleashedlead.mixin",
+  "plugin": "net.camacraft.unleashedlead.mixin.UlMixinPlugin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "unleashedlead.refmap.json",
+  "mixins": [
+    "BoatMixin",
+    "HangingEntityMixin",
+    "LeadItemMixin",
+    "LeashFenceKnotEntityMixin",
+    "MobMixin",
+    "PathfinderMobMixin",
+    "ShearsDispenseItemBehaviorMixin",
+    "VbLeashableMixin"
+  ],
+  "client": [
+    "client.MobRendererMixin",
+    "client.VbLeashFeatureRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
