@@ -17,6 +17,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *
  * <p>Only applied when Vanilla Backport is installed ({@code UlMixinPlugin}); both known package
  * names are targeted and neither is required, so a future move just leaves both ropes drawn.
+ *
+ * <p>This is the one head cancel left (see {@code MobRendererMixin} for why the others went): the
+ * method is Vanilla Backport's own, not vanilla's, so no scaling or rendering mod injects into it,
+ * and everything it would push onto the pose stack it pops itself, so skipping all of it leaves
+ * the stack balanced.
  */
 @Pseudo
 @Mixin(targets = {

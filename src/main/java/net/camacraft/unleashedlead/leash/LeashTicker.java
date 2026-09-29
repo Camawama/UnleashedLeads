@@ -59,14 +59,18 @@ public final class LeashTicker {
         return pull && tick.taut();
     }
 
-    /** Walks a pathfinding mob toward its holder's world position, like vanilla's leash (stopping 2 blocks short). */
+    /**
+     * Walks a pathfinding mob toward its holder's world position, like vanilla's leash (stopping 2
+     * blocks short, times the lead's length scale: 2/16 of a block on a lead at 1/16).
+     */
     public static void walkToHolder(Entity entity, Entity holder) {
         if (!(entity instanceof PathfinderMob mob) || !mob.onGround() && !mob.isInWater()) return;
         if (PhysicsOwnership.claimedByOther(mob, PhysicsAspect.MOTION, LeashPhysics.OWNER)) return;
         Vec3 from = LeashGeometry.centre(mob), to = LeashGeometry.centre(holder);
-        double d = from.distanceTo(to);
-        if (d <= 2.0 || (mob.tickCount % 5 != 0 && !mob.getNavigation().isDone())) return;
-        Vec3 step = to.subtract(from).normalize().scale(d - 2.0);
+        double d = LeashGeometry.span(mob, from, holder, to);
+        double stop = LeashPhysics.WALK_STOP * LeadScale.reach(mob, holder);
+        if (d <= stop || (mob.tickCount % 5 != 0 && !mob.getNavigation().isDone())) return;
+        Vec3 step = to.subtract(from).normalize().scale(d - stop);
         mob.getNavigation().moveTo(mob.getX() + step.x, mob.getY() + step.y, mob.getZ() + step.z, 1.0);
     }
 

@@ -51,6 +51,11 @@ public final class UlConfig {
     public static final ForgeConfigSpec.BooleanValue RELEASH_TAKES_OVER;
     public static final ForgeConfigSpec.BooleanValue LEAD_SOUNDS;
     public static final ForgeConfigSpec.ConfigValue<List<? extends String>> NEVER_LEASH;
+    public static final ForgeConfigSpec.BooleanValue TETHERS;
+    public static final ForgeConfigSpec.DoubleValue TETHER_STIFFNESS;
+    public static final ForgeConfigSpec.DoubleValue TETHER_DAMPING;
+    public static final ForgeConfigSpec.DoubleValue TETHER_BREAKING_STRENGTH;
+    public static final ForgeConfigSpec.DoubleValue TETHER_SLACK;
 
     // ------------------------------------------------------------------ client
 
@@ -137,6 +142,30 @@ public final class UlConfig {
                         "are refused regardless.")
                 .defineListAllowEmpty(List.of("neverLeash"), List::of, o -> o instanceof String);
         s.pop();
+
+        s.comment("Leads tied between two fences: use a lead on one fence, then use the fence it should run to.",
+                "When either end is on a Valkyrien Skies ship the rope holds the ship back: it is slack up to its",
+                "length, then pulls with a spring and damper at the knot, and snaps when the pull passes the",
+                "breaking strength. Several ropes on one ship add up; each snaps on its own.").push("tethers");
+        TETHERS = s.comment("Leads can be tied from fence to fence, and such ropes pull on ships.",
+                        "False: no new fence-to-fence ropes; existing ones stay but pull on nothing, and snap once",
+                        "stretched (snapDistance - freeLength) blocks past their length.")
+                .define("enabled", true);
+        TETHER_STIFFNESS = s.comment("How hard a stretched rope pulls, in newtons per block of stretch on a 1-tonne ship.",
+                        "It grows with the square root of the ship's mass (a 100 t ship gets 10 times this), so",
+                        "a small boat is held firmly and a big ship stretches the rope further.")
+                .defineInRange("stiffness", 20000.0, 0.0, 1.0E9);
+        TETHER_DAMPING = s.comment("How much a stretched rope resists being stretched faster, as a share of critical",
+                        "damping (0 = a bouncy spring, 1 = no bounce at all).")
+                .defineInRange("damping", 0.5, 0.0, 2.0);
+        TETHER_BREAKING_STRENGTH = s.comment("Pull, in newtons, at which a rope on a ship snaps (the lead drops where it broke).",
+                        "The default holds a small boat under full engine power and a big ship drifting, and",
+                        "snaps when a ship rams away: a 1,000 t ship at about 1.3 m/s, a 100 t ship at about 7,",
+                        "a 60 t one at about 11. A steady pull (an engine) must pass it outright.")
+                .defineInRange("breakingStrength", 1000000.0, 1.0, 1.0E12);
+        TETHER_SLACK = s.comment("Rope added to the distance between the fences when a rope is tied, in blocks.")
+                .defineInRange("slack", 0.5, 0.0, 16.0);
+        s.pop();
         SERVER_SPEC = s.build();
 
         ForgeConfigSpec.Builder r = new ForgeConfigSpec.Builder();
@@ -151,7 +180,8 @@ public final class UlConfig {
                 .defineInRange("maxPoints", 40, 4, 256);
         ROPE_COLLISIONS = r.comment("Let the rope rest on and drape over blocks.")
                 .define("collisions", true);
-        ROPE_GRAVITY = r.comment("How hard the rope sags (blocks/tick^2). Follows each end's gravity direction.")
+        ROPE_GRAVITY = r.comment("How hard the rope sags (blocks/tick^2) under ordinary gravity. Follows each end's gravity direction,",
+                        "scaled by the local strength: a sixth on the Moon, none in space, where slack floats.")
                 .defineInRange("gravity", 0.05, 0.0, 1.0);
         ROPE_DAMPING = r.comment("Share of the rope's sway lost per tick.")
                 .defineInRange("damping", 0.06, 0.0, 1.0);

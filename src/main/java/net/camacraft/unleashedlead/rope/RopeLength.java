@@ -29,9 +29,12 @@ public final class RopeLength {
         return Math.max(next, chord);
     }
 
-    /** Points for a rope of {@code length} with segments about {@code segment} long. */
+    /**
+     * Points for a rope of {@code length} with segments about {@code segment} long. A lead at 1/16
+     * has 1/16 the segment length (see {@link RopeScale}), so it gets the same number of points.
+     */
     public static int points(double length, double segment, int max) {
-        int n = (int) Math.ceil(length / Math.max(0.01, segment)) + 1;
+        int n = (int) Math.ceil(length / Math.max(1.0E-4, segment)) + 1;
         return Math.max(RopeSolver.MIN_POINTS + 1, Math.min(Math.max(RopeSolver.MIN_POINTS + 1, max), n));
     }
 }

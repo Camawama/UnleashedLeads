@@ -3,6 +3,47 @@ All notable changes to Unleashed Lead are documented in this file.
 The format is based on Keep a Changelog (https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning (https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Fence-to-fence ropes. Use a lead on a fence, then use another fence (or its knot) within 12 blocks: a rope is tied between them, as long as the distance plus half a block of slack.
+  - Using the first fence again takes the lead back. Using a knot with an empty hand takes its ropes' ends into your hand. Shears, a dispenser with shears, a broken or pushed fence, or a punched knot cut them, one lead dropped per rope. A carried end snaps past 12 blocks and breaks with a firework boost.
+  - Between two fences in the world the rope just hangs. Knots with a rope on them are never cleared away as empty.
+  - Saved with the world; an end whose fence isn't loaded waits (the rope goes slack) and nothing is loaded to find it. Synced to clients and drawn with the simulated rope.
+- Mooring Valkyrien Skies ships. A rope from a ship's fence to a fence in the world, or to another ship, holds the ship back:
+  - slack up to its length, then a spring and damper along the rope, applied at the knot (a ship tied at its bow swings around it);
+  - stiffer for heavier ships, but less than in proportion, so a small boat is held firmly and a big ship stretches the rope;
+  - between two ships, equal and opposite;
+  - several ropes add up, and each snaps on its own when its pull passes the breaking strength (the lead drops where it broke, with the "Lead snaps" sound);
+  - computed on Valkyrien Skies' physics thread through Camafy's ship force hook.
+- Server config `tethers`: `enabled`, `stiffness` (20000 N per block on a 1 t ship, times the square root of the mass in tonnes), `damping` (0.5 of critical), `breakingStrength` (1,000,000 N), `slack` (0.5 blocks).
+- Leads on mobs resized by Pehkui (bundled in Genesis) or another size mod: a shrunk or grown mob is led like any other (see Fixed). The free length and snap distance are measured from an enlarged body rather than its centre, so a big mob held at its side has its whole lead; at normal size or smaller nothing changes.
+- `-Ppehkui` puts Pehkui 3.8.2 on the dev runtime and runs nine more gametests (45 in all): a 1/16 pig and a 4x pig led by a walking player, a 1/16 pig led by a 1/16 player, the pull per tick at three sizes, snapping past 12, the lead's size for each pair of ends, a 1/16 pair's lead snapping past 12/16 and pulling past 5/16, collar and hand points, and Camafy's weights at every size.
+- Gametests: tying through the real block use, the off-hand second use, taking back and untying, the carried snap, shears and broken fences, reloading, and the lead's size rule (a rope at 1/16 is exactly the normal rope at 1/16; normal ends, babies and knots give exactly the normal lead) (36 in the default suite). With `-PshipTests`, Valkyrien Skies goes on the dev runtime and five tests moor real ships: one rope stops a pushed raft, three ropes stretch less than one, a hard push snaps a rope, a ship-to-ship rope pulls both, and a ship rope survives a reload. `-PvsBackend=classic|physx|jolt` picks VS's physics backend.
+
+### Changed
+- Using a fence with a lead in your hand and nothing to tie now starts a rope, even if the fence's knot has leads on it. To take those leads, use the knot with an empty hand, as before.
+- Knot use is handled in the entity interaction event instead of by cancelling `LeashFenceKnotEntity.interact` at its head.
+- `LeadItem.bindPlayerMobs` is wrapped whole instead of cancelled at its head, and the fence and lead uses pass on which hand was used.
+- The pathfinding-mob leash tick no longer returns from the middle of `PathfinderMob.tickLeash`; it takes over by handing vanilla's code no holder.
+- The knot tick check no longer cancels `HangingEntity.tick`, which Pehkui also injects into.
+- The network protocol version is now 2 (a new message).
+- Zero and low gravity (VS Genesis's space, Ad Astra's orbits and planets, Gravity Unbound's zero-strength fields): ropes sag in proportion to the local gravity (Camafy 0.1.7's `Gravity.ambientStrength`), so in space slack floats in a sideways bow instead of hanging, and on the Moon a rope settles six times slower into the same curve. A weightless mob on a lead is pulled along the rope in every direction, and a Pehkui-resized weightless mob in real blocks on every axis (there is no weight for the lead to lift). Needs Camafy 0.1.7.
+- Needs Camafy 0.1.6 or later (below 0.2), for `compat.scale.EntityScale`.
+
+### Fixed
+- A lead between a player and a pig both shrunk to 1/16 was a normal-sized lead: as thick as the pig, five blocks long with its slack in a loop around them, and snapping 12 blocks away. Only its ends followed the size. A lead is now sized for the two things it joins (Pehkui or any other size mod; vanilla babies and fence knots count as normal size):
+  - its thickness (width and collision radius) follows the smaller end, so a tiny player's lead on a normal pig, or a normal player's on a tiny pig, is a thin cord;
+  - its lengths follow the larger end, never above normal: the free length, the snap distance, the rope's slack, segment spacing, payout speed and fall speed (so it sags and swings like a normal rope seen smaller), how close a mob walks up to its holder, and when a horse or camel reacts. Between two ends at 1/16 the lead is 5/16 of a block free and snaps past 12/16. With a normal-sized end or a fence, the lengths stay normal.
+  - Vanilla Backport is handed the distance on a normal-sized lead, so its own thresholds scale the same way.
+  - Leads between normal-sized ends are unchanged.
+- A mob shrunk with Pehkui lost its lead as soon as you walked off with it. Pehkui moves a mob by its motion scale times its velocity, so a pig at 1/16 moved 1/16 of what the lead gave it (at most 0.04 blocks a tick against a walking player's 0.2) and fell behind until the lead snapped at 12. The pull now makes up for the motion scale across the ground, so it keeps up. Up and down it doesn't, so a tiny pig stays on the ground instead of being flown like a kite. A pig grown to 4 was pulled four times too hard, and now isn't.
+- The rope left a resized player at vanilla's fixed hand point, a block below the top of the player's box: under the feet of a player shrunk to 1/16, at the shoulders of one grown to 2. It now leaves the hand at any size. Collars already followed the size.
+- With Vanilla Backport, the first leash distance read in a session could switch off the whole bridge to its leash model (boats, happy ghast) for that session: the bridge was linked after its method handle had been read.
+- Vanilla's leash line is skipped at its call instead of cancelling `MobRenderer.renderLeash` at its head: with Pehkui (bundled in Genesis), the first leashed mob drawn crashed the game with "Pose stack not empty". MixinExtras is now bundled in the release jar.
+- With an empty main hand, tying held leads to a fence could take them straight back: the client's follow-up off-hand use in the same tick counted as a second use.
+- Knots on Valkyrien Skies ships are found again when used, instead of a second knot being made on the same fence (Valkyrien Skies turns entity searches in the shipyard into searches around the ship in the world). Boats restoring a saved lead to a ship's fence use the same lookup.
+
 ## [1.0.0] - 2026-09-27
 
 First release: Bedrock-style leads and the Java 1.21 to 1.21.6 lead changes on Forge 1.20.1.

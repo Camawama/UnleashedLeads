@@ -33,7 +33,7 @@ public final class RopeSolver {
 
     /** Tuning. Mutable so a caller can keep one instance and refresh it from config. */
     public static final class Settings {
-        /** Pull along the gravity direction, blocks per tick squared. */
+        /** Pull of ordinary gravity, blocks per tick squared; scaled by the gravity passed to {@code step}. */
         public double gravity = 0.05;
         /** Share of each point's velocity lost per tick (air drag). */
         public double damping = 0.05;
@@ -79,7 +79,8 @@ public final class RopeSolver {
 
     /**
      * Lays the rope out between the two ends as a hanging curve of {@code restLength}, at rest.
-     * {@code (gx, gy, gz)} is the direction of gravity (need not be unit length).
+     * {@code (gx, gy, gz)} is gravity for this rope (see {@link #step}); with none, the slack
+     * bows out sideways instead of hanging, as a loose line floats in space.
      */
     public void reset(double ax, double ay, double az, double bx, double by, double bz,
                       double restLength, int points, double gx, double gy, double gz) {
@@ -89,13 +90,8 @@ public final class RopeSolver {
         // Depth of a shallow parabola whose arc is restLength: L ~ d + 8h^2 / (3d).
         double slack = Math.max(0.0, this.restLength - chord);
         double sag = chord < 1.0E-6 ? this.restLength * 0.5 : Math.sqrt(3.0 * chord * slack / 8.0);
-        double gl = Math.sqrt(gx * gx + gy * gy + gz * gz);
-        double dx = 0, dy = -1, dz = 0;
-        if (gl > 1.0E-9) {
-            dx = gx / gl;
-            dy = gy / gl;
-            dz = gz / gl;
-        }
+        double[] d = slackDirection(bx - ax, by - ay, bz - az, gx, gy, gz);
+        double dx = d[0], dy = d[1], dz = d[2];
         for (int i = 0; i < count; i++) {
             double t = (double) i / (count - 1);
             double s = 4.0 * sag * t * (1.0 - t);
@@ -113,6 +109,27 @@ public final class RopeSolver {
         lastBx = bx;
         lastBy = by;
         lastBz = bz;
+    }
+
+    /** Gravity weaker than this (as a multiple of normal) leaves a slack rope floating. */
+    public static final double WEIGHTLESS = 1.0E-3;
+
+    /**
+     * Which way a rope's slack bows between ends {@code (cx, cy, cz)} apart: along gravity
+     * {@code (gx, gy, gz)} when there is any, and in zero gravity sideways (level with the world,
+     * across the chord), so a loose line floats instead of hanging. A unit vector.
+     */
+    public static double[] slackDirection(double cx, double cy, double cz, double gx, double gy, double gz) {
+        double gl = Math.sqrt(gx * gx + gy * gy + gz * gz);
+        if (gl >= WEIGHTLESS) return new double[] {gx / gl, gy / gl, gz / gl};
+        if (gl > 1.0E-12) {
+            // weightless, but gravity still says which way is down: bow across it and the chord
+            double sx = cy * gz - cz * gy, sy = cz * gx - cx * gz, sz = cx * gy - cy * gx;
+            double sl = Math.sqrt(sx * sx + sy * sy + sz * sz);
+            if (sl > 1.0E-9) return new double[] {sx / sl, sy / sl, sz / sl};
+        }
+        double sl = Math.sqrt(cz * cz + cx * cx); // chord x world up
+        return sl > 1.0E-9 ? new double[] {-cz / sl, 0.0, cx / sl} : new double[] {1.0, 0.0, 0.0};
     }
 
     /** Changes the rope's natural length (slack paid out or reeled in). */
@@ -182,7 +199,9 @@ public final class RopeSolver {
 
     /**
      * Advances the rope by one game tick with its ends pinned at A and B.
-     * {@code (gx, gy, gz)} is the direction of gravity for this rope (need not be unit length).
+     * {@code (gx, gy, gz)} is gravity for this rope as a multiple of normal: its direction is
+     * the way the rope sags, its length how hard ({@code (0, -1, 0)} is ordinary gravity,
+     * {@code (0, -0.166, 0)} the Moon's, zero none: in space the rope only drifts and damps).
      */
     public void step(double ax, double ay, double az, double bx, double by, double bz,
                      double gx, double gy, double gz, Settings settings, Collider collider) {
@@ -190,11 +209,10 @@ public final class RopeSolver {
         int substeps = Math.max(1, settings.substeps);
         int iterations = Math.max(1, settings.iterations);
         double h = 1.0 / substeps;
-        double gl = Math.sqrt(gx * gx + gy * gy + gz * gz);
         double g = settings.gravity * h * h;
-        double gdx = gl > 1.0E-9 ? gx / gl * g : 0.0;
-        double gdy = gl > 1.0E-9 ? gy / gl * g : -g;
-        double gdz = gl > 1.0E-9 ? gz / gl * g : 0.0;
+        double gdx = gx * g;
+        double gdy = gy * g;
+        double gdz = gz * g;
         double keep = Math.pow(Math.max(0.0, 1.0 - settings.damping), h);
         double segment = restLength / (n - 1);
         boolean collide = settings.collisions && collider != null && collider != NO_COLLISION;

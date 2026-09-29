@@ -1,6 +1,6 @@
 # Unleashed Lead: in-game testing checklist
 
-The headless gametests (`./gradlew runGameTestServer`, and again with `-PvanillaBackport`) cover the server rules, the leash physics and the rope solver. Everything below needs a real client: how the rope looks, multiplayer, and the other mods.
+The headless gametests (`./gradlew runGameTestServer`, again with `-PvanillaBackport`, with `-PshipTests` for real Valkyrien Skies ships, and with `-Ppehkui` for mobs Pehkui has resized) cover the server rules, the leash physics, the rope solver and fence-to-fence ropes pulling ships. Everything below needs a real client: how the rope looks, multiplayer, and the other mods.
 
 Tick each box as you go. Next to anything that looks wrong, write what you saw and your settings (graphics mode, shaders, render distance).
 
@@ -89,7 +89,32 @@ Tick each box as you go. Next to anything that looks wrong, write what you saw a
   - With `recipe.newLeadRecipe = false` and `/reload`, the slimeball recipe is back.
 - [ ] **Subtitles** on: "Lead tied", "Lead untied", "Lead snaps", "Shears snip" all appear at the right moments.
 
-## 6. Other mods
+## 6. Fence-to-fence ropes
+- [ ] **Tying:** hold 3 leads and use a fence. A knot appears, one lead is used, and a rope runs from the knot to your hand. Walk to a second fence 8 blocks away and use it. The rope is now tied fence to fence and hangs with a little sag (about 1.4 blocks at the middle). No second lead is used.
+- [ ] Walk around the rope: it is the same thick, striped rope as a lead, lit along its length, and stays drawn with both knots off-screen.
+- [ ] Leave and come back (past 100 blocks, or save and quit, and reload). The rope is still there, and both knots are back.
+- [ ] **Off hand:** carry a rope with an **empty main hand** and use a fence. It is tied once, and not taken straight back into your hand.
+- [ ] **Taking back:** use a rope's knot with an empty hand. That end comes back to your hand, the other stays tied ("Lead untied"). Use the rope's first fence: the lead drops there and the rope is gone. Sneak-use a knot with an empty hand: nothing is taken.
+- [ ] **More ropes:** with a lead in hand, use a fence that already has a rope. A second rope starts from it. Tie three ropes from one fence to three others.
+- [ ] Carry a rope more than 12 blocks from its fence: it snaps ("Lead snaps") and the lead drops at the fence. Glide and boost with a firework while carrying one: it breaks.
+- [ ] **Breaking:** shear a knot (both its ropes drop, shears lose 1 durability); punch a knot; break a fence; push a fence with a piston. Each drops one lead per rope and the rope disappears on both screens at once.
+- [ ] A dispenser with shears facing a knot cuts its ropes.
+- [ ] Rope rendering off (`rope.enabled = false`): fence-to-fence ropes are still drawn, as a thin fixed curve.
+- [ ] **Multiplayer:** a second player sees ropes appear, move to a new fence, and disappear, and sees ropes that were tied before they joined or came near.
+- [ ] **Valkyrien Skies, ship to world:**
+  - Build a small boat (a few dozen blocks) with a fence at the bow, and tie a rope from it to a fence on the shore. The rope runs from the fence on the ship, not toward the shipyard, and follows the ship smoothly as it bobs.
+  - Drive away with the ship's engines. The rope stops the boat a little past its length and holds it there without jitter. The boat swings around the bow knot.
+  - Add two more ropes (stern and middle). The boat is held closer, with less stretch.
+  - Build a big ship (several hundred blocks or more) and ram it away at speed. The rope snaps with "Lead snaps", and a lead drops where it broke. A slow drift is still held.
+  - With several ropes, the most stretched one snaps first; the others keep holding.
+- [ ] **Ship to ship:** tie two ships together and drive one away. The other is towed along; the two pull on each other.
+- [ ] **Unloaded ends:** tie a ship to a shore fence, fly the ship far away until it unloads, and come back: the rope is there again. Unload the shore fence's chunk instead: the rope goes slack (the ship drifts) and holds again once the chunk is back. Nothing loads chunks by itself (check with `/forge tps` or a chunk viewer).
+- [ ] Remove the ship's fence, or disassemble the ship: the rope drops its lead.
+- [ ] Tweak `tethers.stiffness`, `damping`, `breakingStrength` and `slack` in the server config and check each changes what it says.
+- [ ] **Vanilla Backport installed:** all of the above still works, and each rope is drawn once.
+- [ ] **Game Start:** in a match whose rules forbid changing blocks at a fence, you can't tie, take or cut ropes there.
+
+## 7. Other mods
 - [ ] **Gravity Unbound:**
   - On a gravity plate or core with sideways gravity, leash a mob. The rope sags toward that side's "down", attaches at the collar of the rotated model, and the pull still drags the mob toward you.
   - A mob hanging from a knot in sideways gravity swings along that gravity.
@@ -103,8 +128,22 @@ Tick each box as you go. Next to anything that looks wrong, write what you saw a
   - A pig catching on its lead after a fall gets no damage and no g-force effects.
   - A pig swung hard into a wall on a lead can still take impact damage.
   - A player riding a leashed boat that catches gets no vignette.
+- [ ] **Pehkui (in Genesis):** use `/scale set pehkui:base <scale> @e[type=pig,limit=1,sort=nearest]` (and `@s` for yourself).
+  - A pig at 0.0625 (1/16): leash it and walk, then sprint, 20 blocks away and around. It stays on the lead and is dragged along behind you, on the ground (a small hop at most, no flying at hand height). Stop: it is pulled to about 5 blocks and waits. The rope meets its tiny neck.
+  - Same pig: fly away in creative. The lead still snaps just past 12 blocks, with the subtitle and a lead dropped.
+  - A pig at 4: stand right next to its side and walk away. It follows without being thrown at you or past you; the lead only tightens once you are about 5 blocks from its body. It snaps about 12 blocks from its body (not its centre). The rope meets its big neck, high up.
+  - A pig at 1/16 hanging from a knot over a drop: it hangs and swings like a normal pig and doesn't bounce up and down endlessly.
+  - Scale yourself to 0.0625 and hold a lead: the rope leaves your tiny hand, not a point under your feet. Scale yourself to 2: it leaves your hand, not your shoulder.
+  - **Both at 1/16** (`/scale set pehkui:base 0.0625 @s` and the pig): the lead looks like a normal lead seen from a normal player, only 16 times smaller: as thin next to you as a normal lead is next to a normal player, with a small sag (not a loop lying around you), and it swings and settles at the usual pace. Walk off: it goes taut about 5/16 of a block from the pig (about five tiny pig-widths) and drags the pig; it snaps about 12/16 of a block away (fly off in creative). The pig walks after you and stops about 2/16 of a block short.
+  - Tiny you, normal pig: a thin cord from your hand to its collar, normal lengths (it snaps at 12 blocks, as usual). Normal you, tiny pig: the same thin cord.
+  - A tiny pig tied to a fence: the knot looks as always, a thin cord runs from it to the pig, and the pig can wander 5 blocks (it is tied to a normal-sized fence).
+  - Both at 4: the rope is four times as thick; the lengths are the normal ones, measured from the bodies.
+  - A calf or a baby turtle on a lead looks exactly as before (vanilla babies count as normal size).
+  - With Vanilla Backport as well: the tiny pair's lead behaves the same (taut past 5/16, snapping past 12/16).
+  - A leashed boat or horse at 1/16 and at 4 is dragged along too.
+  - With Full Stop (Camafy 0.1.6): `/fullstop weigh @e[type=pig,limit=1,sort=nearest]` on a 1/16 pig shows about 0.037 kg, on a 4x pig 9600 kg; on a calf 81 kg; on yourself at 1/16 about 0.018 kg (plus what you carry).
 - [ ] **MKW Mobility:** a kart and its driver can't be leashed. A leashed mob that sits in a kart loses the lead, as in vanilla.
-- [ ] **GrappleVS:** its lead overhaul is off with Unleashed Lead installed, so there is only one rope per lead and the physics isn't doubled. A player on a grapple (motion claimed) is never pulled by a lead.
+- [ ] **Grapple Unbound:** a player on a grapple (motion claimed) is never pulled by a lead.
 - [ ] **Game Start:** in a match where PvP is off, you can't take, re-tie or cut the leads of another player's tamed wolf.
 - [ ] **Vanilla Backport:**
   - No crash on start.
@@ -116,9 +155,17 @@ Tick each box as you go. Next to anything that looks wrong, write what you saw a
   - Shearing a sheep another player leads does nothing.
   - `leash_drop_connections` in Vanilla Backport's config controls the firework rule.
 
-## 7. Performance
+## 8. Performance
 - [ ] Put about 50 animals on leads: ten fences with five each, plus a few held. Look at them from nearby and from 60 blocks away.
   - Compare frame time (F3 graph) with rope rendering on and with `rope.enabled = false`.
   - Expected: a small cost up close. Past `simulationDistance` (48) ropes are fixed curves, and only the nearest `maxSimulated` (64) are simulated.
 - [ ] Same scene with shaders (Oculus) if you use them. The ropes render, possibly without shader lighting.
 - [ ] Server tick time (`/forge tps`) with 50 leashed animals is no worse than vanilla leashes by a meaningful margin.
+- [ ] A ship moored with 10 ropes: no drop in server tick time or in Valkyrien Skies' physics rate (its debug screen), and the ship sits still without shaking.
+
+## 9. Zero and low gravity (Camafy 0.1.7)
+- [ ] VS Genesis space (`genesis:great_unknown`) or an Ad Astra orbit: a lead held with slack, and a fence-to-fence rope, float in a sideways bow instead of hanging down. Close up, a simulated rope keeps whatever shape you leave it in and only damps.
+- [ ] Same place: a leashed mob drifting past 5 blocks is pulled back along the rope from any direction, including from below, and never "falls". Inside 5 blocks it drifts freely.
+- [ ] A ship moored in space doesn't sink or pull: the rope stays slack until you push the ship past its length.
+- [ ] Ad Astra Moon: ropes settle into the same curve as on Earth, just more slowly. A mob hanging from a knot swings slowly.
+- [ ] A Gravity Unbound zero-strength plate: a mob in its field floats on its lead. A rope is pulled by the average gravity at its two ends, so a lead from a player outside the field to a mob inside still settles into its hanging curve, only half as fast; a rope between two mobs both inside floats.

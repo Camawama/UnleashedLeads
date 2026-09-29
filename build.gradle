@@ -17,6 +17,45 @@ base {
 java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 
 println "Java: ${System.getProperty 'java.version'}, JVM: ${System.getProperty 'java.vm.version'} (${System.getProperty 'java.vendor'}), Arch: ${System.getProperty 'os.arch'}"
+
+// Bundle MixinExtras inside the release jar (Forge 1.20.1 does not ship it).
+jarJar.enable()
+
+// SHIP TESTS ARE OPT-IN: gradlew runGameTestServer -PshipTests [-PvsBackend=classic|physx|jolt]
+// (Full Stop's setup). The flag puts Valkyrien Skies and Kotlin for Forge on the dev runtime and
+// compiles src/gametest, whose tests assemble real ships with VS's own ShipAssembler: the one place
+// Unleashed Lead names VS types, so the release jar never carries them and never needs VS. Each
+// fresh test world is seeded with the physics backend asked for (PhysX unless told otherwise).
+def shipTests = project.hasProperty('shipTests')
+if (shipTests) {
+    sourceSets.main.java.srcDir 'src/gametest/java'
+}
+
+// PEHKUI TESTS ARE OPT-IN TOO: gradlew runGameTestServer -Ppehkui. The flag puts Pehkui (the size
+// mod Genesis bundles) on the dev runtime and compiles src/pehkuiTest, whose tests resize mobs
+// through Pehkui's own API. Like the ship tests, the release jar never carries them: the mod
+// itself only reads Pehkui's motion scale through Camafy (compat.scale.EntityScale).
+def pehkuiTests = project.hasProperty('pehkui')
+if (pehkuiTests) {
+    sourceSets.main.java.srcDir 'src/pehkuiTest/java'
+}
+
+// AD ASTRA SMOKE TEST, OPT-IN: gradlew runGameTestServer -PadAstra. The flag puts Ad Astra (and
+// the three libraries it needs) on the dev runtime and compiles src/adAstraTest, which checks that
+// Camafy's gravity reads its orbits as weightless and its Moon at a sixth, in the real dimensions.
+// Nothing here compiles against Ad Astra: Camafy reaches it by reflection.
+def adAstraTests = project.hasProperty('adAstra')
+if (adAstraTests) {
+    sourceSets.main.java.srcDir 'src/adAstraTest/java'
+}
+def shipTestBackend = {
+    def backend = (project.findProperty('vsBackend') ?: 'physx').toString().toLowerCase(Locale.ROOT)
+    if (!(backend in ['classic', 'physx', 'jolt'])) {
+        throw new GradleException("-PvsBackend must be classic, physx or jolt, not '${backend}'")
+    }
+    return backend
+}
+
 minecraft {
     mappings channel: mapping_channel, version: mapping_version
 
@@ -54,6 +93,18 @@ minecraft {
             // Its own directory, so automated runs never rotate the logs or delete the world
             // of a manual runServer session.
             workingDirectory project.file('run-gametest')
+            if (shipTests) {
+                // the backend the ship tests report (see gameTestServerProperties)
+                property 'unleashedlead.test.vsBackend', shipTestBackend()
+            }
+            if (pehkuiTests) {
+                // Pehkui's compat1204minus.ScreenHandlerMixin (container reach) can't apply to
+                // ForgeGradle's recompiled Minecraft: javac orders a lambda's captured variables
+                // differently from Mojang's jar, and Pehkui's mixin config is required, so the
+                // server would stop at startup. It applies in a real game. Only this run turns
+                // mixin apply errors into warnings (check the log for any of ours).
+                property 'mixin.env.ignoreRequired', 'true'
+            }
         }
 
         data {
@@ -81,6 +132,13 @@ repositories {
         url = 'https://api.modrinth.com/maven'
         content { includeGroup 'maven.modrinth' }
     }
+    // Only for the opt-in -PshipTests runs: VS's core API. The VS mod jar and Kotlin for Forge come
+    // from Modrinth's maven above, whose POMs carry no dependencies (as in Camafy's build).
+    maven {
+        name = 'ValkyrienSkies'
+        url = 'https://maven.valkyrienskies.org'
+        content { includeGroupByRegex 'org\\.valkyrienskies.*' }
+    }
 }
 
 dependencies {
@@ -89,6 +147,13 @@ dependencies {
 
     implementation fg.deobf("net.camacraft.camafy:camafy:${camafy_version}")
 
+    // MixinExtras: @WrapOperation in client/MobRendererMixin. The common jar's annotation
+    // processor writes the refmap entries for it; the forge jar ships nested in the release jar.
+    compileOnly(annotationProcessor("io.github.llamalad7:mixinextras-common:${mixinextras_version}"))
+    implementation(jarJar("io.github.llamalad7:mixinextras-forge:${mixinextras_version}")) {
+        jarJar.ranged(it, "[${mixinextras_version},)")
+    }
+
     // Vanilla Backport (and the Platform library it needs) in dev runs, opt-in with
     // -PvanillaBackport. Unleashed Lead never compiles against it: it detects the mod at
     // runtime and talks to it by reflection (compat/VanillaBackport.java), so this only puts the
@@ -96,7 +161,30 @@ dependencies {
     if (project.hasProperty('vanillaBackport')) {
         runtimeOnly fg.deobf("maven.modrinth:vanillabackport:${vanilla_backport_modrinth_version}")
         runtimeOnly fg.deobf("maven.modrinth:platform:${platform_modrinth_version}")
-        runtimeOnly fg.deobf("io.github.llamalad7:mixinextras-forge:${mixinextras_version}")
+    }
+
+    // Valkyrien Skies, only with -PshipTests. The mod reaches ships through Camafy and never
+    // compiles against VS; only the ship tests in src/gametest do, to build and watch real ships.
+    if (shipTests) {
+        compileOnly fg.deobf("maven.modrinth:valkyrien-skies:${vs_modrinth_version}") { transitive = false }
+        compileOnly("org.valkyrienskies.core:api:${vs_core_version}") { transitive = false }
+        runtimeOnly fg.deobf("maven.modrinth:valkyrien-skies:${vs_modrinth_version}") { transitive = false }
+        runtimeOnly fg.deobf("maven.modrinth:kotlin-for-forge:${kotlin_for_forge_modrinth_version}") { transitive = false }
+    }
+
+    // Ad Astra and its libraries, only with -PadAstra (see src/adAstraTest).
+    if (adAstraTests) {
+        runtimeOnly fg.deobf("maven.modrinth:ad-astra:${ad_astra_modrinth_version}") { transitive = false }
+        runtimeOnly fg.deobf("maven.modrinth:botarium:${botarium_modrinth_version}") { transitive = false }
+        runtimeOnly fg.deobf("maven.modrinth:resourceful-lib:${resourcefullib_modrinth_version}") { transitive = false }
+        runtimeOnly fg.deobf("maven.modrinth:resourceful-config:${resourcefulconfig_modrinth_version}") { transitive = false }
+    }
+
+    // Pehkui, only with -Ppehkui: on the dev runtime for the scaled-mob gametests, and compileOnly
+    // for them (src/pehkuiTest) to resize mobs through its API.
+    if (pehkuiTests) {
+        compileOnly fg.deobf("maven.modrinth:pehkui:${pehkui_modrinth_version}") { transitive = false }
+        runtimeOnly fg.deobf("maven.modrinth:pehkui:${pehkui_modrinth_version}") { transitive = false }
     }
 }
 
@@ -117,6 +205,9 @@ tasks.named('processResources', ProcessResources).configure {
 }
 
 tasks.named('jar', Jar).configure {
+    // The plain jar has no MixinExtras inside; the release jar is the jarJar one below.
+    archiveClassifier = 'slim'
+
     manifest {
         attributes([
                 'Specification-Title'     : mod_id,
@@ -131,6 +222,16 @@ tasks.named('jar', Jar).configure {
     }
 
     finalizedBy 'reobfJar'
+}
+
+// The release artifact: build/libs/unleashedlead-<version>.jar, the reobfuscated mod plus
+// MixinExtras nested under META-INF/jarjar.
+tasks.named('jarJar').configure {
+    archiveClassifier = ''
+    manifest {
+        attributes(['MixinConfigs': "${mod_id}.mixins.json"])
+    }
+    finalizedBy 'reobfJarJar'
 }
 
 /*
@@ -166,6 +267,15 @@ tasks.register('gameTestServerProperties') {
 
         file.withOutputStream {
             props.store(it, 'Written by gameTestServerProperties -- see build.gradle')
+        }
+
+        if (shipTests) {
+            // The physics backend the fresh test world starts on (-PvsBackend, PhysX by default).
+            def backend = [classic: 'KRUNCH_CLASSIC', physx: 'KRUNCH_PHYSX', jolt: 'KRUNCH_JOLT'][shipTestBackend()]
+            def vsCore = project.file('run-gametest/defaultconfigs/valkyrienskies/vs-core-server.toml')
+            vsCore.parentFile.mkdirs()
+            vsCore.text = "[\"Krunch Konfig\"]\n    physicsBackend = \"${backend}\"\n"
+            println "Ship tests on Valkyrien Skies' ${backend} backend"
         }
     }
 }

@@ -119,26 +119,30 @@ public final class VanillaBackport {
         }
     }
 
+    // Each accessor below links the bridge (isLeashable) BEFORE reading its handle: the handle
+    // fields are only set by resolve(), so reading one first handed a null handle to the very first
+    // call of a session, which then switched the whole bridge off.
+
     /** The four attachment offsets on the leashed entity (entity-local, before yaw), or null. */
     @Nullable
     public static Vec3[] quadOffsets(Entity entity) {
-        return offsets(entity, quadOffsets);
+        return isLeashable(entity) ? offsets(entity, quadOffsets) : null;
     }
 
     /** The four attachment offsets on the holder (entity-local, before yaw), or null. */
     @Nullable
     public static Vec3[] quadHolderOffsets(Entity holder) {
-        return offsets(holder, quadHolderOffsets);
+        return isLeashable(holder) ? offsets(holder, quadHolderOffsets) : null;
     }
 
     /** Its snap distance for this entity (12, or 16 for a happy ghast), or NaN. */
     public static double snapDistance(Entity entity) {
-        return number(entity, snapDistance);
+        return isLeashable(entity) ? number(entity, snapDistance) : Double.NaN;
     }
 
     /** Its elastic (free) distance for this entity (6, or 10 for a happy ghast), or NaN. */
     public static double elasticDistance(Entity entity) {
-        return number(entity, elasticDistance);
+        return isLeashable(entity) ? number(entity, elasticDistance) : Double.NaN;
     }
 
     /** Its {@code Leashable} interface, or null when the bridge isn't active. */

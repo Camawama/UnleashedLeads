@@ -7,9 +7,9 @@
   "refmap": "unleashedlead.refmap.json",
   "mixins": [
     "BoatMixin",
+    "FenceBlockMixin",
     "HangingEntityMixin",
     "LeadItemMixin",
-    "LeashFenceKnotEntityMixin",
     "MobMixin",
     "PathfinderMobMixin",
     "ShearsDispenseItemBehaviorMixin",

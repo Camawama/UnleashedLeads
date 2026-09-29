@@ -6,12 +6,15 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import net.camacraft.camafy.config.ConfigUtil;
 import net.camacraft.camafy.util.color.Argb;
 import net.camacraft.unleashedlead.UlConfig;
+import net.camacraft.unleashedlead.client.ClientTethers;
 import net.camacraft.unleashedlead.compat.VanillaBackport;
+import net.camacraft.unleashedlead.leash.LeadScale;
 import net.camacraft.unleashedlead.leash.LeashGeometry;
 import net.camacraft.unleashedlead.leash.LeashPhysics;
 import net.camacraft.unleashedlead.leash.Leashes;
 import net.camacraft.unleashedlead.rope.BlockCollider;
 import net.camacraft.unleashedlead.rope.RopeLength;
+import net.camacraft.unleashedlead.rope.RopeScale;
 import net.camacraft.unleashedlead.rope.RopeSolver;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -34,7 +37,8 @@ import java.util.List;
  * Every lead the client can see, simulated and drawn.
  *
  * <p>Once per client tick every leashed entity in the level is gathered (mobs, boats, Vanilla
- * Backport's quad-leashed boats and horses, which get four ropes). The nearest ones, up to
+ * Backport's quad-leashed boats and horses, which get four ropes), and every fence-to-fence rope
+ * ({@link ClientTethers}: knot to knot, or knot to the player carrying it). The nearest ones, up to
  * {@code maxSimulated} and within {@code simulationDistance}, are stepped with {@link RopeSolver};
  * the rest are drawn as a fixed hanging curve. Each frame the simulated ropes are interpolated
  * between their last two tick states and bent so their ends sit exactly on the holder's hand and
@@ -42,6 +46,13 @@ import java.util.List;
  *
  * <p>Ropes are drawn after entities, all in one batch, culled by the rope's own bounds rather
  * than either entity's: a rope stays visible while it crosses the screen with both ends off it.
+ *
+ * <p>Each rope is sized for the two things it joins ({@link LeadScale}, {@link RopeScale}): its
+ * width and collision radius follow the smaller end, and its lengths (free length and slack,
+ * segment spacing, how fast slack pays out, and its gravity, so it sags and swings like a normal
+ * rope seen smaller) follow the lead's length scale, which is below 1 only when both ends are small.
+ * A lead between a player and a pig both shrunk to 1/16 is the normal rope at 1/16; between two
+ * normal-sized ends every number is exactly what it was.
  */
 public final class ClientRopes {
     private static final Long2ObjectOpenHashMap<Rope> ROPES = new Long2ObjectOpenHashMap<>();
@@ -55,6 +66,8 @@ public final class ClientRopes {
     /** How fast slack pays out or reels in, blocks per tick. */
     private static final double PAYOUT_RATE = 0.35;
 
+    /** Half the configured rope width: the collision radius of a normal-sized rope. */
+    private static double baseRadius = 0.025;
     private static long tickStamp;
     private static double[] scratch = new double[STATIC_POINTS * 3];
     private static int[] scratchLight = new int[STATIC_POINTS];
@@ -69,6 +82,10 @@ public final class ClientRopes {
         Entity holder;
         int index;
         boolean quad;
+        /** A fence-to-fence rope: both ends are knots (or a knot and the player carrying it). */
+        boolean tether;
+        /** A tied fence-to-fence rope's length (NaN while carried: it hangs like a lead). */
+        double tetherLength = Double.NaN;
         long seen;
         boolean simulated;
         RopeSolver solver;
@@ -80,6 +97,10 @@ public final class ClientRopes {
         /** Extra length the rope has needed to go around blocks lately (see {@link #tick}). */
         double wrapExtra;
         Vec3 up = new Vec3(0, 1, 0);
+        /** Gravity on the rope, as a multiple of normal (zero in space): see LeashGeometry.ropeGravity. */
+        Vec3 gravity = new Vec3(0, -1, 0);
+        /** How big this rope is next to a normal lead (width, and lengths): see {@link RopeScale}. */
+        RopeScale scale = RopeScale.NORMAL;
 
         Vec3 holderEnd(float partialTick) {
             if (quad) {
@@ -90,6 +111,7 @@ public final class ClientRopes {
         }
 
         Vec3 entityEnd(float partialTick) {
+            if (tether) return LeashGeometry.holderPoint(entity, partialTick); // a knot: where ropes leave it
             if (quad) {
                 Vec3[] offsets = VanillaBackport.quadOffsets(entity);
                 if (offsets != null) return LeashGeometry.attachPoint(entity, offsets[index], partialTick);
@@ -99,13 +121,20 @@ public final class ClientRopes {
 
         double targetLength(double chord) {
             if (quad) return chord * (1.0 + RopeLength.TAUT_SAG); // Java draws quad leads without slack
-            return RopeLength.target(chord, LeashPhysics.freeLength(entity), UlConfig.num(UlConfig.ROPE_SLACK));
+            // a tied fence-to-fence rope is exactly as long as it was tied: all of its slack hangs
+            if (tether && tetherLength > 0.0) return RopeLength.target(chord, tetherLength, 1.0);
+            if (tether) return RopeLength.target(chord, scale.length(UlConfig.num(UlConfig.FREE_LENGTH)), UlConfig.num(UlConfig.ROPE_SLACK));
+            // as long as the lead's free length, sized for its ends (5/16 of a block at 1/16)
+            return RopeLength.target(chord, scale.length(LeashPhysics.freeLength(entity)), UlConfig.num(UlConfig.ROPE_SLACK));
         }
 
         void tick(ClientLevel level, boolean simulate) {
+            scale = LeadScale.of(entity, holder);
             Vec3 a = holderEnd(1.0F), b = entityEnd(1.0F);
             Vec3 down = LeashGeometry.ropeGravity(entity, holder);
-            up = down.scale(-1.0);
+            gravity = down;
+            // the mesh needs a unit up for its sides and shading even where nothing pulls the rope
+            up = LeashGeometry.ropeDown(entity, holder).scale(-1.0);
             double chord = a.distanceTo(b);
             double target = targetLength(chord) + wrapExtra;
             if (!simulate) {
@@ -115,7 +144,7 @@ public final class ClientRopes {
                 return;
             }
             int max = UlConfig.num(UlConfig.ROPE_MAX_POINTS);
-            double segment = UlConfig.num(UlConfig.ROPE_SEGMENT_LENGTH);
+            double segment = scale.length(UlConfig.num(UlConfig.ROPE_SEGMENT_LENGTH));
             boolean fresh = !simulated || solver == null
                     || a.distanceToSqr(a1) > TELEPORT * TELEPORT || b.distanceToSqr(b1) > TELEPORT * TELEPORT;
             if (fresh) {
@@ -129,7 +158,7 @@ public final class ClientRopes {
                 b0 = b1 = b;
                 simulated = true;
             } else {
-                restLength = RopeLength.approach(restLength, target, chord, PAYOUT_RATE);
+                restLength = RopeLength.approach(restLength, target, chord, scale.length(PAYOUT_RATE));
                 solver.setRestLength(restLength);
                 int want = RopeLength.points(restLength, segment, max);
                 if (Math.abs(want - solver.count()) >= 2) {
@@ -142,12 +171,16 @@ public final class ClientRopes {
                 }
                 a0 = a1;
                 b0 = b1;
-                solver.step(a.x, a.y, a.z, b.x, b.y, b.z, down.x, down.y, down.z, SETTINGS, COLLIDER);
+                // A rope at 1/16 falls at 1/16 of the pace (as Pehkui has entities at 1/16 fall), so
+                // it sags and swings like a normal rope seen smaller; it is 1/16 as thick, too.
+                double r = scale.reach();
+                SETTINGS.radius = scale.thickness(baseRadius);
+                solver.step(a.x, a.y, a.z, b.x, b.y, b.z, down.x * r, down.y * r, down.z * r, SETTINGS, COLLIDER);
                 cur = solver.copyPoints(cur);
                 a1 = a;
                 b1 = b;
                 // A rope bent around a post or a corner is longer than the straight line between
-                // its ends: let it have that length instead of fighting the blocks. (GrappleVS's
+                // its ends: let it have that length instead of fighting the blocks. (Grapple Unbound's former
                 // lead overhaul, by the same author, wrapped leads around corners with explicit
                 // bend points; here the rope's own collisions do it and this keeps it relaxed.)
                 double stretch = solver.length() - restLength;
@@ -186,12 +219,13 @@ public final class ClientRopes {
             } else {
                 n = STATIC_POINTS;
                 points = scratch(n);
-                hangingCurve(a, b, restLength, up, n, points);
+                hangingCurve(a, b, restLength, gravity, n, points);
                 pointLight = scratchLight;
                 sampleLight(level, points, n, pointLight);
             }
-            if (!visible(points, n, halfWidth, frustum)) return;
-            MESH.draw(out, pose, points, n, pointLight, cam.x, cam.y, cam.z, halfWidth, r, g, bl, stripe, up.x, up.y, up.z);
+            double w = scale.thickness(halfWidth);
+            if (!visible(points, n, w, frustum)) return;
+            MESH.draw(out, pose, points, n, pointLight, cam.x, cam.y, cam.z, w, r, g, bl, stripe, up.x, up.y, up.z);
         }
     }
 
@@ -241,6 +275,26 @@ public final class ClientRopes {
                 live.add(rope);
             }
         }
+        // Fence-to-fence ropes: drawn with or without rope rendering (vanilla has no line for them).
+        // Keyed below zero, clear of the leads' keys.
+        for (ClientTethers.Entry entry : ClientTethers.all()) {
+            Entity knot = level.getEntity(entry.end());
+            Entity other = level.getEntity(entry.other());
+            if (knot == null || other == null || !knot.isAlive() || !other.isAlive()) continue;
+            if (LeashGeometry.centre(knot).distanceToSqr(cam) > renderDistance * renderDistance) continue;
+            long key = -1L - entry.id();
+            Rope rope = ROPES.get(key);
+            if (rope == null || rope.entity != knot || rope.holder != other) {
+                rope = new Rope();
+                ROPES.put(key, rope);
+            }
+            rope.entity = knot;
+            rope.holder = other;
+            rope.tether = true;
+            rope.tetherLength = entry.length();
+            rope.seen = tickStamp;
+            live.add(rope);
+        }
         live.sort(Comparator.comparingDouble(r -> LeashGeometry.centre(r.entity).distanceToSqr(cam)));
         int simulated = 0;
         for (Rope rope : live) {
@@ -256,7 +310,8 @@ public final class ClientRopes {
         SETTINGS.gravity = UlConfig.num(UlConfig.ROPE_GRAVITY);
         SETTINGS.damping = UlConfig.num(UlConfig.ROPE_DAMPING);
         SETTINGS.collisions = UlConfig.on(UlConfig.ROPE_COLLISIONS);
-        SETTINGS.radius = UlConfig.num(UlConfig.ROPE_THICKNESS) * 0.5;
+        baseRadius = UlConfig.num(UlConfig.ROPE_THICKNESS) * 0.5;
+        SETTINGS.radius = baseRadius;
     }
 
     // ------------------------------------------------------------------ per frame
@@ -299,16 +354,21 @@ public final class ClientRopes {
         return scratch;
     }
 
-    /** A parabola of arc length about {@code length} hanging between a and b, against {@code up}. */
-    private static void hangingCurve(Vec3 a, Vec3 b, double length, Vec3 up, int n, double[] out) {
+    /**
+     * A parabola of arc length about {@code length} between a and b, its slack bowed the way the
+     * solver lays a fresh rope out: hanging along {@code gravity}, or sideways where there is none
+     * (a rope at rest has the same shape in any gravity, so low gravity keeps the full sag).
+     */
+    private static void hangingCurve(Vec3 a, Vec3 b, double length, Vec3 gravity, int n, double[] out) {
         double chord = a.distanceTo(b);
         double sag = chord < 1.0E-6 ? length * 0.5 : Math.sqrt(3.0 * chord * Math.max(0.0, length - chord) / 8.0);
+        double[] bow = RopeSolver.slackDirection(b.x - a.x, b.y - a.y, b.z - a.z, gravity.x, gravity.y, gravity.z);
         for (int i = 0; i < n; i++) {
             double t = (double) i / (n - 1);
             double s = 4.0 * sag * t * (1.0 - t);
-            out[i * 3] = a.x + (b.x - a.x) * t - up.x * s;
-            out[i * 3 + 1] = a.y + (b.y - a.y) * t - up.y * s;
-            out[i * 3 + 2] = a.z + (b.z - a.z) * t - up.z * s;
+            out[i * 3] = a.x + (b.x - a.x) * t + bow[0] * s;
+            out[i * 3 + 1] = a.y + (b.y - a.y) * t + bow[1] * s;
+            out[i * 3 + 2] = a.z + (b.z - a.z) * t + bow[2] * s;
         }
     }
 

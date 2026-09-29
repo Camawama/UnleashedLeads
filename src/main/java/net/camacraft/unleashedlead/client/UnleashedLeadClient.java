@@ -27,6 +27,9 @@ public final class UnleashedLeadClient {
     }
 
     private static void onLevelUnload(LevelEvent.Unload event) {
-        if (event.getLevel().isClientSide()) ClientRopes.clear();
+        if (event.getLevel().isClientSide()) {
+            ClientRopes.clear();
+            ClientTethers.clear();
+        }
     }
 }

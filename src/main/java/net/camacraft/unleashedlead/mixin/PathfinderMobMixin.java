@@ -1,5 +1,7 @@
 package net.camacraft.unleashedlead.mixin;
 
+import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
+import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.camacraft.camafy.physics.PhysicsAspect;
 import net.camacraft.camafy.physics.PhysicsOwnership;
 import net.camacraft.unleashedlead.leash.LeashGeometry;
@@ -13,11 +15,11 @@ import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.ai.goal.Goal;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
-import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
  * Replaces 1.20.1's leash pull for pathfinding mobs (a velocity kick past 6 blocks, snapping at
@@ -26,6 +28,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * lead, letting go of a dead holder) still runs first; what is kept of the rest is vanilla's
  * behaviour: the home restriction around the holder, sitting pets not being pulled, horses and
  * camels reacting to the distance, and walking after the holder.
+ *
+ * <p>How: vanilla's pull, snap and walk all sit inside {@code if (holder != null)}, right after it
+ * reads the holder. That read is wrapped: this mod's leash tick runs there, and vanilla is handed
+ * no holder, so its own code does nothing. The method is never cancelled or returned from early,
+ * so an injection pair another mod puts in it (at its head and its returns) stays whole.
  *
  * <p>Not applied when Vanilla Backport is installed: it replaces this same method with its own
  * leash physics (see {@code UlMixinPlugin}).
@@ -45,14 +52,19 @@ public abstract class PathfinderMobMixin extends Mob {
     @Shadow
     protected abstract void onLeashDistance(float distance);
 
-    @Inject(method = "tickLeash", cancellable = true,
-            at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/Mob;tickLeash()V", shift = At.Shift.AFTER))
-    private void unleashedlead$tickLeash(CallbackInfo ci) {
-        ci.cancel();
-        Entity holder = this.getLeashHolder();
+    @WrapOperation(method = "tickLeash",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/PathfinderMob;getLeashHolder()Lnet/minecraft/world/entity/Entity;"))
+    @Nullable
+    private Entity unleashedlead$tickLeash(PathfinderMob self, Operation<Entity> original) {
+        unleashedlead$leashTick(original.call(self));
+        return null; // vanilla's pull, 10-block snap and walk below have nothing to act on
+    }
+
+    @Unique
+    private void unleashedlead$leashTick(@Nullable Entity holder) {
         if (holder == null || holder.level() != this.level()) return;
         Vec3 holderCentre = LeashGeometry.centre(holder);
-        this.restrictTo(BlockPos.containing(holderCentre), (int) LeashPhysics.freeLength(this));
+        this.restrictTo(BlockPos.containing(holderCentre), LeashPhysics.homeRadius(this, holder));
 
         boolean sitting = (Object) this instanceof TamableAnimal tamable && tamable.isInSittingPose();
         LeashPhysics.Tick tick = LeashPhysics.tick(this, holder, !sitting);
@@ -61,17 +73,19 @@ public abstract class PathfinderMobMixin extends Mob {
             return;
         }
         if (sitting) return;
-        this.onLeashDistance((float) tick.distance());
+        // as on a normal lead: a horse or camel reacts past 6 blocks, 6/16 on a lead at 1/16
+        this.onLeashDistance((float) tick.normalDistance());
         if (!this.isLeashed()) return;
 
         // Walk after the holder, as vanilla does, whenever there is ground (or water) to walk on,
         // unless another mod owns this mob's motion.
-        if (tick.distance() > 2.0 && this.shouldStayCloseToLeashHolder() && (this.onGround() || this.isInWater())
+        double stop = LeashPhysics.WALK_STOP * tick.reach(); // 2 blocks short, less on a small lead
+        if (tick.distance() > stop && this.shouldStayCloseToLeashHolder() && (this.onGround() || this.isInWater())
                 && !PhysicsOwnership.claimedByOther(this, PhysicsAspect.MOTION, LeashPhysics.OWNER)) {
             this.goalSelector.enableControlFlag(Goal.Flag.MOVE);
             if (this.tickCount % 5 == 0 || this.getNavigation().isDone()) {
                 Vec3 toward = holderCentre.subtract(LeashGeometry.centre(this)).normalize()
-                        .scale(Math.max(tick.distance() - 2.0, 0.0));
+                        .scale(Math.max(tick.distance() - stop, 0.0));
                 this.getNavigation().moveTo(this.getX() + toward.x, this.getY() + toward.y, this.getZ() + toward.z,
                         this.followLeashSpeed());
             }

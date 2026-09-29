@@ -4,6 +4,7 @@ import net.camacraft.camafy.compat.vs.Ships;
 import net.camacraft.unleashedlead.UlConfig;
 import net.camacraft.unleashedlead.UnleashedLead;
 import net.camacraft.unleashedlead.compat.VanillaBackport;
+import net.camacraft.unleashedlead.leash.LeadScale;
 import net.camacraft.unleashedlead.leash.LeashGeometry;
 import net.camacraft.unleashedlead.leash.LeashPhysics;
 import net.camacraft.unleashedlead.leash.LeashTicker;
@@ -27,9 +28,13 @@ import java.lang.invoke.MethodType;
  * {@code Boat}) runs the leash tick. Its hooks are interface default methods, so declaring
  * methods of the same name here overrides them, with no compile dependency on it:
  * <ul>
- *   <li>{@code vb$leashDistanceTo}: measured between world-space centres. Its own measures raw
- *   positions, and a knot on a Valkyrien Skies ship lives in shipyard coordinates, thousands of
- *   blocks away: every lead tied to a ship's fence snapped the moment it was tied.</li>
+ *   <li>{@code vb$leashDistanceTo}: measured between world-space centres ({@code LeashGeometry.span},
+ *   which also allows for an enlarged body). Its own measures raw positions, and a knot on a
+ *   Valkyrien Skies ship lives in shipyard coordinates, thousands of blocks away: every lead tied
+ *   to a ship's fence snapped the moment it was tied. It is handed over as the distance on a
+ *   normal-sized lead (divided by {@code LeadScale.reach}), so every threshold of its own (the snap
+ *   and elastic distances, whether a lead can be attached) applies to a lead between two ends
+ *   shrunk to 1/16 at 1/16, exactly as this mod's own physics does. Unchanged for normal leads.</li>
  *   <li>{@code vb$leashSnapDistance} / {@code vb$leashElasticDistance}: this mod's config (same
  *   defaults, 12 and 5 + 1), so one setting governs both mods. Its happy ghast keeps its own
  *   10 / 16, declared on the ghast's class.</li>
@@ -40,7 +45,8 @@ import java.lang.invoke.MethodType;
  *   horse on four ropes) keep Vanilla Backport's own four-point physics, called through the
  *   interface default.</li>
  *   <li>{@code vb$closeRangeLeashBehavior}: walking after a holder on a ship aims at its world
- *   position; otherwise Vanilla Backport's own.</li>
+ *   position, and on a lead smaller than normal stops short by the lead's scale (its own walks to
+ *   2 real blocks short, further than a lead at 1/16 reaches); otherwise Vanilla Backport's own.</li>
  * </ul>
  * Only applied when Vanilla Backport is installed ({@code UlMixinPlugin}).
  */
@@ -56,7 +62,8 @@ public abstract class VbLeashableMixin {
     private static boolean unleashedlead$looked;
 
     public double vb$leashDistanceTo(Entity holder) {
-        return LeashGeometry.centre(holder).distanceTo(LeashGeometry.centre((Entity) (Object) this));
+        Entity self = (Entity) (Object) this;
+        return LeashGeometry.span(self, holder) / LeadScale.reach(self, holder);
     }
 
     public double vb$leashSnapDistance() {
@@ -70,7 +77,7 @@ public abstract class VbLeashableMixin {
     public void vb$whenLeashedTo(Entity holder) {
         Entity self = (Entity) (Object) this;
         if (self instanceof Mob mob) {
-            mob.restrictTo(BlockPos.containing(LeashGeometry.centre(holder)), (int) LeashPhysics.freeLength(self));
+            mob.restrictTo(BlockPos.containing(LeashGeometry.centre(holder)), LeashPhysics.homeRadius(self, holder));
         }
         VanillaBackport.notifyHolder(holder, self);
     }
@@ -94,7 +101,7 @@ public abstract class VbLeashableMixin {
 
     public void vb$closeRangeLeashBehavior(Entity holder) {
         Entity self = (Entity) (Object) this;
-        if (unleashedlead$onShip(holder)) {
+        if (unleashedlead$onShip(holder) || LeadScale.reach(self, holder) < 1.0) {
             LeashTicker.walkToHolder(self, holder);
             return;
         }

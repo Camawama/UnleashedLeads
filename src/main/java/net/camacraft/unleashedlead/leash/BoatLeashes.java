@@ -2,6 +2,7 @@ package net.camacraft.unleashedlead.leash;
 
 import net.camacraft.unleashedlead.network.LeashLinkMessage;
 import net.camacraft.unleashedlead.network.UlNetwork;
+import net.camacraft.unleashedlead.tether.Knots;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
@@ -9,7 +10,6 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.HangingEntity;
-import net.minecraft.world.entity.decoration.LeashFenceKnotEntity;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
@@ -99,7 +99,7 @@ public final class BoatLeashes {
                 UUID uuid = pending.getUUID("UUID");
                 holder = level.getEntity(uuid);
             } else if (pending.contains("X", 99) && pending.contains("Y", 99) && pending.contains("Z", 99)) {
-                holder = LeashFenceKnotEntity.getOrCreateKnot(level, NbtUtils.readBlockPos(pending));
+                holder = Knots.getOrCreate(level, NbtUtils.readBlockPos(pending)); // finds ship knots too
             }
             if (holder != null) {
                 attach(boat, leash, holder);
