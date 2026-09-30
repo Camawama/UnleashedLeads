@@ -89,7 +89,12 @@ public final class BoatLeashes {
         leash.ul$setPendingTag(tag.contains(SAVE_KEY, 10) ? tag.getCompound(SAVE_KEY).copy() : null);
     }
 
-    /** Server, start of the boat's tick: re-attach a loaded leash, let go of a dead holder. */
+    /**
+     * Server, start of the boat's tick: re-attach a loaded leash, let go of a dead holder. A lead to
+     * a fence on a Valkyrien Skies ship waits for the ship, as a mob's does ({@code mixin.MobMixin}):
+     * it is tied back once the ship and the fence's chunk are loaded, and kept as a saved lead when
+     * its knot unloads with the ship.
+     */
     public static void serverTick(Entity boat, BoatLeash leash) {
         if (!(boat.level() instanceof ServerLevel level)) return;
         CompoundTag pending = leash.ul$pendingTag();
@@ -99,7 +104,10 @@ public final class BoatLeashes {
                 UUID uuid = pending.getUUID("UUID");
                 holder = level.getEntity(uuid);
             } else if (pending.contains("X", 99) && pending.contains("Y", 99) && pending.contains("Z", 99)) {
-                holder = Knots.getOrCreate(level, NbtUtils.readBlockPos(pending)); // finds ship knots too
+                BlockPos fence = NbtUtils.readBlockPos(pending);
+                Knots.Presence presence = Knots.presence(level, fence);
+                if (presence == Knots.Presence.AWAY) return; // its ship (or the fence's chunk) isn't loaded yet
+                if (presence != Knots.Presence.GONE) holder = Knots.getOrCreate(level, fence); // finds ship knots too
             }
             if (holder != null) {
                 attach(boat, leash, holder);
@@ -109,7 +117,13 @@ public final class BoatLeashes {
             }
         }
         Entity holder = leash.ul$holder();
-        if (holder != null && (!boat.isAlive() || !holder.isAlive() || holder.level() != boat.level())) {
+        BlockPos away = holder == null || !boat.isAlive() ? null : Knots.unloadedFromShip(holder);
+        if (away != null) {
+            // its knot unloaded with its ship: wait for the ship as a saved lead
+            leash.ul$setHolder(null);
+            leash.ul$setPendingTag(NbtUtils.writeBlockPos(away));
+            UlNetwork.CHANNEL.toTracking(boat, new LeashLinkMessage(boat.getId(), 0));
+        } else if (holder != null && (!boat.isAlive() || !holder.isAlive() || holder.level() != boat.level())) {
             detach(boat, leash, true);
         }
     }

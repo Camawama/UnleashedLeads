@@ -66,7 +66,9 @@ public final class LeashTicker {
     public static void walkToHolder(Entity entity, Entity holder) {
         if (!(entity instanceof PathfinderMob mob) || !mob.onGround() && !mob.isInWater()) return;
         if (PhysicsOwnership.claimedByOther(mob, PhysicsAspect.MOTION, LeashPhysics.OWNER)) return;
-        Vec3 from = LeashGeometry.centre(mob), to = LeashGeometry.centre(holder);
+        Vec3 to = LeashGeometry.knownCentre(holder);
+        if (to == null) return; // a knot on a ship that isn't loaded: nowhere to walk to yet
+        Vec3 from = LeashGeometry.centre(mob);
         double d = LeashGeometry.span(mob, from, holder, to);
         double stop = LeashPhysics.WALK_STOP * LeadScale.reach(mob, holder);
         if (d <= stop || (mob.tickCount % 5 != 0 && !mob.getNavigation().isDone())) return;

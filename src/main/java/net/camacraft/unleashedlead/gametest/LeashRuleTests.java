@@ -6,9 +6,12 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.gametest.framework.GameTest;
 import net.minecraft.gametest.framework.GameTestHelper;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.animal.Cow;
 import net.minecraft.world.entity.animal.Pig;
@@ -28,6 +31,7 @@ import net.minecraftforge.gametest.GameTestHolder;
 import net.minecraftforge.gametest.PrefixGameTestTemplate;
 
 import java.util.Optional;
+import java.util.UUID;
 
 import static net.camacraft.unleashedlead.gametest.TestUtil.PLATFORM;
 
@@ -169,6 +173,35 @@ public class LeashRuleTests {
                 helper.fail("the pig is still leashed to a broken knot");
             } else if (TestUtil.itemsNear(helper, pig, Items.LEAD, 3.0) < 1) {
                 helper.fail("no lead dropped");
+            } else {
+                helper.succeed();
+            }
+        });
+    }
+
+    /**
+     * A mob loaded with a lead saved to a fence in the world is tied back to a knot on it straight
+     * away, as in vanilla. Only a lead to a fence on a Valkyrien Skies ship waits, for its ship (the
+     * ship tests, {@code -PshipTests}, cover that).
+     */
+    @GameTest(template = PLATFORM, timeoutTicks = 20)
+    public static void savedLeadToAWorldFenceIsTiedBackAtOnce(GameTestHelper helper) {
+        BlockPos fence = new BlockPos(6, 1, 6);
+        helper.setBlock(fence, Blocks.OAK_FENCE);
+        Pig pig = TestUtil.still(helper, EntityType.PIG, new Vec3(9.5, 1.0, 6.5));
+        CompoundTag saved = pig.saveWithoutId(new CompoundTag());
+        saved.put("Leash", NbtUtils.writeBlockPos(helper.absolutePos(fence)));
+        Pig loaded = EntityType.PIG.create(helper.getLevel());
+        loaded.load(saved);
+        loaded.setUUID(UUID.randomUUID());
+        pig.discard();
+        helper.getLevel().addFreshEntity(loaded);
+        helper.runAfterDelay(2, () -> {
+            Entity holder = loaded.getLeashHolder();
+            if (!(holder instanceof LeashFenceKnotEntity knot) || !knot.getPos().equals(helper.absolutePos(fence))) {
+                helper.fail("the loaded pig's lead wasn't tied back to its fence: " + holder);
+            } else if (TestUtil.itemsNear(helper, loaded, Items.LEAD, 3.0) != 0) {
+                helper.fail("tying the saved lead back dropped a lead");
             } else {
                 helper.succeed();
             }

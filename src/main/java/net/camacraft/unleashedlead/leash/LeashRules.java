@@ -337,7 +337,8 @@ public final class LeashRules {
      *   (Bedrock 1.21.100). The leads drop at their entities on their next tick.</li>
      *   <li>Nothing has been tied to it for a while: it disappears (1.21.6 / Bedrock). A mob
      *   loading later with a saved lead to this fence re-creates it, as vanilla always has. A
-     *   fence-to-fence rope counts as something tied to it.</li>
+     *   fence-to-fence rope counts as something tied to it. A knot on a Valkyrien Skies ship that
+     *   isn't loaded is left alone: with no place in the world, it can't look for what is tied to it.</li>
      * </ul>
      */
     public static boolean knotTick(LeashFenceKnotEntity knot) {
@@ -348,7 +349,8 @@ public final class LeashRules {
             return true;
         }
         if (UlConfig.on(UlConfig.KNOT_RULES) && knot.tickCount > EMPTY_KNOT_GRACE
-                && knot.tickCount % 20 == 0 && !Leashes.holdsAny(knot, SEARCH_RADIUS) && !hasRopes(knot)) {
+                && knot.tickCount % 20 == 0 && LeashGeometry.placed(knot)
+                && !Leashes.holdsAny(knot, SEARCH_RADIUS) && !hasRopes(knot)) {
             knot.dropItem(null);
             knot.discard();
             return true;

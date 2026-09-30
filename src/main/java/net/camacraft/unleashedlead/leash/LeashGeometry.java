@@ -31,8 +31,9 @@ import org.jetbrains.annotations.Nullable;
  * </ul>
  * Both go through Valkyrien Skies (via Camafy): a knot on a fence on a ship is an entity in
  * shipyard coordinates, thousands of blocks from where the ship is drawn, so every holder point
- * is taken to world space first. The drawn points also follow Gravity Unbound's frames, so a
- * collar on a mob walking on a wall sits where the model shows it.
+ * is taken to world space first. While its ship isn't loaded it has no place in the world at all
+ * ({@link #knownCentre}), and the lead waits. The drawn points also follow Gravity Unbound's
+ * frames, so a collar on a mob walking on a wall sits where the model shows it.
  */
 public final class LeashGeometry {
     private LeashGeometry() {}
@@ -40,6 +41,30 @@ public final class LeashGeometry {
     /** Bounding-box centre in world space. */
     public static Vec3 centre(Entity entity) {
         return Ships.toWorld(entity.level(), entity.getBoundingBox().getCenter());
+    }
+
+    /**
+     * {@link #centre}, or null while the entity has no known place in the world: it lives in the
+     * shipyard of a Valkyrien Skies ship that isn't loaded (a knot on a ship's fence while the ship
+     * is out of range, or still loading after a player comes back). {@link #centre} would give its
+     * raw shipyard position, millions of blocks from the ship, and a lead measured to that snaps at
+     * once. VS loads a ship by a player's distance to the ship, while the mob tied to it is an
+     * ordinary entity in the world, loaded and ticking by distance to itself.
+     */
+    @Nullable
+    public static Vec3 knownCentre(Entity entity) {
+        Level level = entity.level();
+        Vec3 c = entity.getBoundingBox().getCenter();
+        if (!Ships.inShipyard(level, c.x, c.y, c.z)) return c;
+        ShipRef ship = Ships.managing(level, c.x, c.y, c.z);
+        return ship == null ? null : ship.toWorld(c);
+    }
+
+    /** Whether {@code entity} has a known place in the world (see {@link #knownCentre}). */
+    public static boolean placed(Entity entity) {
+        Level level = entity.level();
+        Vec3 c = entity.getBoundingBox().getCenter();
+        return !Ships.inShipyard(level, c.x, c.y, c.z) || Ships.managing(level, c.x, c.y, c.z) != null;
     }
 
     /**

@@ -63,7 +63,8 @@ public abstract class PathfinderMobMixin extends Mob {
     @Unique
     private void unleashedlead$leashTick(@Nullable Entity holder) {
         if (holder == null || holder.level() != this.level()) return;
-        Vec3 holderCentre = LeashGeometry.centre(holder);
+        Vec3 holderCentre = LeashGeometry.knownCentre(holder);
+        if (holderCentre == null) return; // a knot on a ship that isn't loaded: the lead waits for it
         this.restrictTo(BlockPos.containing(holderCentre), LeashPhysics.homeRadius(this, holder));
 
         boolean sitting = (Object) this instanceof TamableAnimal tamable && tamable.isInSittingPose();

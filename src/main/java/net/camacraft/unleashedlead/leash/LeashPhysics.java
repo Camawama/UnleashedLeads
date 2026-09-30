@@ -132,12 +132,15 @@ public final class LeashPhysics {
     /**
      * One tick of the lead between {@code entity} and {@code holder}: snap past the snap
      * distance, else pull (when {@code pull} and past the free length). Server side for anything
-     * the server simulates; the controlling client for a boat a player drives.
+     * the server simulates; the controlling client for a boat a player drives. While either end has
+     * no known place in the world (a knot on a Valkyrien Skies ship that isn't loaded,
+     * {@link LeashGeometry#knownCentre}) the lead waits: no pull, no snap.
      */
     public static Tick tick(Entity entity, Entity holder, boolean pull) {
         if (holder.level() != entity.level()) return Tick.NONE;
-        Vec3 a = LeashGeometry.centre(entity);
-        Vec3 h = LeashGeometry.centre(holder);
+        Vec3 a = LeashGeometry.knownCentre(entity);
+        Vec3 h = LeashGeometry.knownCentre(holder);
+        if (a == null || h == null) return Tick.NONE;
         Vec3 holderVelocity = holderVelocity(entity, holder, h);
         double d = LeashGeometry.span(entity, a, holder, h);
         double reach = LeadScale.reach(entity, holder); // 1 unless both ends are small

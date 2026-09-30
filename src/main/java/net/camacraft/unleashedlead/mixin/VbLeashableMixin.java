@@ -47,6 +47,9 @@ import java.lang.invoke.MethodType;
  *   <li>{@code vb$closeRangeLeashBehavior}: walking after a holder on a ship aims at its world
  *   position, and on a lead smaller than normal stops short by the lead's scale (its own walks to
  *   2 real blocks short, further than a lead at 1/16 reaches); otherwise Vanilla Backport's own.</li>
+ *   <li>A knot on a ship that isn't loaded has no place in the world yet: the distance to it is
+ *   handed over as 0 and no home is set, so Vanilla Backport neither snaps nor pulls the lead, and
+ *   the walk after it stands down, until the ship is loaded again.</li>
  * </ul>
  * Only applied when Vanilla Backport is installed ({@code UlMixinPlugin}).
  */
@@ -63,6 +66,8 @@ public abstract class VbLeashableMixin {
 
     public double vb$leashDistanceTo(Entity holder) {
         Entity self = (Entity) (Object) this;
+        // a knot on a ship that isn't loaded has no place yet: as if at hand, so nothing snaps or pulls
+        if (!LeashGeometry.placed(holder) || !LeashGeometry.placed(self)) return 0.0;
         return LeashGeometry.span(self, holder) / LeadScale.reach(self, holder);
     }
 
@@ -76,8 +81,9 @@ public abstract class VbLeashableMixin {
 
     public void vb$whenLeashedTo(Entity holder) {
         Entity self = (Entity) (Object) this;
-        if (self instanceof Mob mob) {
-            mob.restrictTo(BlockPos.containing(LeashGeometry.centre(holder)), LeashPhysics.homeRadius(self, holder));
+        Vec3 at = LeashGeometry.knownCentre(holder);
+        if (self instanceof Mob mob && at != null) {
+            mob.restrictTo(BlockPos.containing(at), LeashPhysics.homeRadius(self, holder));
         }
         VanillaBackport.notifyHolder(holder, self);
     }
