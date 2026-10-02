@@ -47,6 +47,14 @@ Tick each box as you go. Next to anything that looks wrong, write what you saw a
   - Break the fence. The pig falls from where it is, and fall damage counts only from that point.
 - [ ] Lower a pig slowly down a drop on a lead by walking toward the edge. No damage on landing.
 - [ ] Tie a sitting (tamed) wolf. It isn't pulled, but it still snaps past 12.
+- [ ] **Chains of mobs (`mobChains`):**
+  - Tie a sheep to a cow (hold the sheep, sneak-use the cow). Grab the sheep with the physgun and drag it away: the cow follows it on the lead instead of the lead snapping. Grab the cow instead: the sheep follows, as before.
+  - Make a chain of three (sheep on cow on pig). Grab each of them in turn and drag it: the other two follow.
+  - Use a lead on the sheep (the bottom of a free chain): it comes to you, the cow is now tied to the sheep, nothing drops. Walk off: the sheep follows you and the cow follows the sheep.
+  - Hold the cow of a sheep-on-cow chain and use a lead on the sheep: your lead moves to the sheep (no lead used from your hand), the cow is tied to the sheep.
+  - Tie the cow to a fence, the sheep to the cow, and use a lead on the sheep: the sheep comes to you alone and its lead to the cow drops (1.21.6's take-over).
+  - Tie a chicken to a pig and let them wander: the pig hardly notices the chicken; the chicken is towed.
+  - Hold a tamed wolf, sneak-use a sheep (the wolf is now tied to the sheep) and make the wolf sit: the sheep is held back about 5 blocks from it and can't wander off.
 - [ ] A leashed horse whose player rider is steering keeps its normal control.
 
 ## 4. Boats, rafts and chest boats

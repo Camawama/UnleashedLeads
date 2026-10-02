@@ -4,6 +4,7 @@ import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
 import net.camacraft.camafy.physics.PhysicsAspect;
 import net.camacraft.camafy.physics.PhysicsOwnership;
+import net.camacraft.unleashedlead.leash.LeashChains;
 import net.camacraft.unleashedlead.leash.LeashGeometry;
 import net.camacraft.unleashedlead.leash.LeashPhysics;
 import net.minecraft.core.BlockPos;
@@ -68,7 +69,7 @@ public abstract class PathfinderMobMixin extends Mob {
         this.restrictTo(BlockPos.containing(holderCentre), LeashPhysics.homeRadius(this, holder));
 
         boolean sitting = (Object) this instanceof TamableAnimal tamable && tamable.isInSittingPose();
-        LeashPhysics.Tick tick = LeashPhysics.tick(this, holder, !sitting);
+        LeashPhysics.Tick tick = LeashPhysics.tick(this, holder, !sitting, true);
         if (tick.snapped()) {
             this.goalSelector.disableControlFlag(Goal.Flag.MOVE);
             return;
@@ -81,8 +82,10 @@ public abstract class PathfinderMobMixin extends Mob {
         // Walk after the holder, as vanilla does, whenever there is ground (or water) to walk on,
         // unless another mod owns this mob's motion.
         double stop = LeashPhysics.WALK_STOP * tick.reach(); // 2 blocks short, less on a small lead
+        // In a chain of mobs dragged from this mob's side, the holder comes to it instead (LeashChains).
         if (tick.distance() > stop && this.shouldStayCloseToLeashHolder() && (this.onGround() || this.isInWater())
-                && !PhysicsOwnership.claimedByOther(this, PhysicsAspect.MOTION, LeashPhysics.OWNER)) {
+                && !PhysicsOwnership.claimedByOther(this, PhysicsAspect.MOTION, LeashPhysics.OWNER)
+                && !LeashChains.holderFollows(this, holder)) {
             this.goalSelector.enableControlFlag(Goal.Flag.MOVE);
             if (this.tickCount % 5 == 0 || this.getNavigation().isDone()) {
                 Vec3 toward = holderCentre.subtract(LeashGeometry.centre(this)).normalize()

@@ -55,7 +55,7 @@ public final class LeashTicker {
      */
     public static boolean vanillaBackportPull(Entity entity, Entity holder) {
         boolean pull = !(entity.getControllingPassenger() instanceof Player); // never a player-steered ride
-        LeashPhysics.Tick tick = LeashPhysics.tick(entity, holder, pull);
+        LeashPhysics.Tick tick = LeashPhysics.tick(entity, holder, pull, true);
         return pull && tick.taut();
     }
 

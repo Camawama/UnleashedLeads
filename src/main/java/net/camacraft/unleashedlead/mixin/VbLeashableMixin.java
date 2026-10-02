@@ -5,6 +5,7 @@ import net.camacraft.unleashedlead.UlConfig;
 import net.camacraft.unleashedlead.UnleashedLead;
 import net.camacraft.unleashedlead.compat.VanillaBackport;
 import net.camacraft.unleashedlead.leash.LeadScale;
+import net.camacraft.unleashedlead.leash.LeashChains;
 import net.camacraft.unleashedlead.leash.LeashGeometry;
 import net.camacraft.unleashedlead.leash.LeashPhysics;
 import net.camacraft.unleashedlead.leash.LeashTicker;
@@ -46,7 +47,9 @@ import java.lang.invoke.MethodType;
  *   interface default.</li>
  *   <li>{@code vb$closeRangeLeashBehavior}: walking after a holder on a ship aims at its world
  *   position, and on a lead smaller than normal stops short by the lead's scale (its own walks to
- *   2 real blocks short, further than a lead at 1/16 reaches); otherwise Vanilla Backport's own.</li>
+ *   2 real blocks short, further than a lead at 1/16 reaches); otherwise Vanilla Backport's own.
+ *   A mob whose side of a chain of mobs is being dragged doesn't walk back to its holder: the
+ *   holder comes to it ({@code LeashChains}).</li>
  *   <li>A knot on a ship that isn't loaded has no place in the world yet: the distance to it is
  *   handed over as 0 and no home is set, so Vanilla Backport neither snaps nor pulls the lead, and
  *   the walk after it stands down, until the ship is loaded again.</li>
@@ -107,6 +110,7 @@ public abstract class VbLeashableMixin {
 
     public void vb$closeRangeLeashBehavior(Entity holder) {
         Entity self = (Entity) (Object) this;
+        if (LeashChains.holderFollows(self, holder)) return; // a chain dragged from this end: the holder comes here
         if (unleashedlead$onShip(holder) || LeadScale.reach(self, holder) < 1.0) {
             LeashTicker.walkToHolder(self, holder);
             return;

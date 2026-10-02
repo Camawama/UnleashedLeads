@@ -6,6 +6,7 @@ import net.camacraft.camafy.compat.gravity.GravityFrame;
 import net.camacraft.camafy.compat.scale.EntityScale;
 import net.camacraft.camafy.physics.PhysicsAspect;
 import net.camacraft.camafy.physics.PhysicsOwnership;
+import net.camacraft.camafy.weight.Weights;
 import net.camacraft.unleashedlead.UlConfig;
 import net.camacraft.unleashedlead.UlSounds;
 import net.camacraft.unleashedlead.UnleashedLead;
@@ -68,10 +69,10 @@ public final class LeashPhysics {
      */
     private static final double MIN_MOTION_SCALE = 1.0 / 64.0;
 
-    /** Last tick's holder centre per leashed entity, for the holder's velocity. Identity-keyed. */
+    /** Last tick's centres of both ends per leashed entity, for their velocities. Identity-keyed. */
     private static final Map<Entity, HolderTrack> TRACKS = new MapMaker().weakKeys().makeMap();
 
-    private record HolderTrack(Entity holder, long tick, Vec3 centre) {}
+    private record HolderTrack(Entity holder, long tick, Vec3 centre, Vec3 entityCentre) {}
 
     private LeashPhysics() {}
 
@@ -137,11 +138,23 @@ public final class LeashPhysics {
      * {@link LeashGeometry#knownCentre}) the lead waits: no pull, no snap.
      */
     public static Tick tick(Entity entity, Entity holder, boolean pull) {
+        return tick(entity, holder, pull, pull);
+    }
+
+    /**
+     * As {@link #tick(Entity, Entity, boolean)}, with the two ends apart. {@code pullEntity}: the
+     * lead may move the leashed entity (not a sitting pet). {@code pullHolder}: this is the lead's
+     * one pulling call this tick, so between two mobs it may move the holder too: a chain of mobs
+     * follows whichever of them is moved ({@link LeashChains}). A player, a knot or a boat holding
+     * the lead is never moved by it.
+     */
+    public static Tick tick(Entity entity, Entity holder, boolean pullEntity, boolean pullHolder) {
         if (holder.level() != entity.level()) return Tick.NONE;
+        LeashChains.record(entity, holder);
         Vec3 a = LeashGeometry.knownCentre(entity);
         Vec3 h = LeashGeometry.knownCentre(holder);
         if (a == null || h == null) return Tick.NONE;
-        Vec3 holderVelocity = holderVelocity(entity, holder, h);
+        Track track = track(entity, holder, a, h);
         double d = LeashGeometry.span(entity, a, holder, h);
         double reach = LeadScale.reach(entity, holder); // 1 unless both ends are small
         if (d > snapDistance(entity) * reach) {
@@ -151,8 +164,22 @@ public final class LeashPhysics {
         double free = freeLength(entity) * reach;
         if (d <= free) return new Tick(d, false, false, reach);
         // A ride a player steers (a horse, a strider) is theirs to steer; boats decide for themselves.
-        if (pull && !(entity instanceof Boat) && entity.getControllingPassenger() instanceof Player) pull = false;
-        if (pull) applyPull(entity, a, h, d, free, holderVelocity);
+        if (pullEntity && !(entity instanceof Boat) && entity.getControllingPassenger() instanceof Player) pullEntity = false;
+        LeashChains.Role role = pullHolder ? LeashChains.role(entity, holder) : LeashChains.Role.ENTITY;
+        switch (role) {
+            case ENTITY -> {
+                if (pullEntity) applyPull(entity, a, h, d, free, track.holderVelocity);
+            }
+            case HOLDER -> {
+                // the entity's side of the chain is being moved: its holder follows it
+                applyPull(holder, h, a, d, free, track.entityVelocity);
+                afterTaut(holder, entity, h, a, reach);
+                LeashTicker.walkToHolder(holder, entity);
+            }
+            case BOTH -> {
+                if (pullBoth(entity, holder, a, h, d, free, pullEntity)) afterTaut(holder, entity, h, a, reach);
+            }
+        }
         afterTaut(entity, holder, a, h, reach);
         return new Tick(d, true, false, reach);
     }
@@ -163,6 +190,11 @@ public final class LeashPhysics {
         UlSounds.play(entity.level(), holderCentre, UlSounds.LEAD_BREAK, entity);
     }
 
+    /**
+     * Pulls {@code entity} (centre {@code a}) toward the other end of its lead (centre {@code h},
+     * moving at {@code holderVelocity}), which stands still for this lead: its holder, or in a
+     * chain of mobs whichever end is nearer what moves the chain.
+     */
     private static void applyPull(Entity entity, Vec3 a, Vec3 h, double d, double free, Vec3 holderVelocity) {
         if (PhysicsOwnership.claimedByOther(entity, PhysicsAspect.MOTION, OWNER)) return;
         Vec3 out = a.subtract(h);
@@ -194,6 +226,60 @@ public final class LeashPhysics {
         dv = Math.max(dv, Math.min(0.0, -maxPull - radial));
         if (dv >= 0.0) return;
         Gravity.setWorldVelocity(entity, own.add(toOwnUnits(n.scale(dv), frame, motion, weight)), frame);
+    }
+
+    /**
+     * A lead between two mobs neither of which is nearer what moves their chain (two free mobs, or
+     * a tug of war): the same spring and damper, on how fast the two part, shared out by mass so
+     * the lighter end moves more. An end the lead can't move ({@link LeashChains#immovable}, or the
+     * entity when {@code pullEntity} is false) leaves it all to the other. Returns whether the
+     * holder was moved.
+     */
+    private static boolean pullBoth(Entity entity, Entity holder, Vec3 a, Vec3 h, double d, double free, boolean pullEntity) {
+        boolean moveEntity = pullEntity && !LeashChains.immovable(entity);
+        boolean moveHolder = !LeashChains.immovable(holder);
+        if (!moveEntity && !moveHolder) return false;
+        if (!UlConfig.on(UlConfig.PHYSICS)) {
+            // 1.20.1's one-way kick, kept as it was for anyone who turns the elastic physics off
+            if (moveEntity) applyPull(entity, a, h, d, free, Vec3.ZERO);
+            return false;
+        }
+        Vec3 out = a.subtract(h);
+        double centres = out.length();
+        if (centres < 1.0E-9) return false;
+        Vec3 n = out.scale(1.0 / centres); // outward, holder to entity
+        End e = End.of(entity), o = End.of(holder);
+        double maxPull = UlConfig.num(UlConfig.MAX_PULL);
+        double radial = e.lead.subtract(o.lead).dot(n); // > 0: the ends are parting
+        double dv = -Math.min(UlConfig.num(UlConfig.STIFFNESS) * (d - free), maxPull);
+        if (radial > 0.0) dv -= radial * UlConfig.num(UlConfig.RADIAL_DAMPING);
+        dv = Math.max(dv, Math.min(0.0, -maxPull - radial));
+        if (dv >= 0.0) return false;
+        double me = Math.max(Weights.massWithPassengersKg(entity), MIN_MASS_KG);
+        double mh = Math.max(Weights.massWithPassengersKg(holder), MIN_MASS_KG);
+        double entityShare = !moveHolder ? 1.0 : !moveEntity ? 0.0 : mh / (me + mh);
+        if (entityShare > 0.0) e.add(n.scale(dv * entityShare));
+        if (entityShare < 1.0) o.add(n.scale(-dv * (1.0 - entityShare)));
+        return entityShare < 1.0;
+    }
+
+    /** The least mass an end is taken to have, so a weightless one doesn't take the whole pull by a division. */
+    private static final double MIN_MASS_KG = 0.01;
+
+    /** One end of a lead with its velocity in lead units ({@link #toLeadUnits}). */
+    private record End(Entity entity, GravityFrame frame, double motion, double weight, Vec3 own, Vec3 lead) {
+        static End of(Entity entity) {
+            GravityFrame frame = Gravity.frame(entity);
+            Vec3 own = Gravity.getWorldVelocity(entity, frame);
+            double motion = Math.max(EntityScale.motion(entity), MIN_MOTION_SCALE);
+            double weight = motion == 1.0 ? 1.0 : Mth.clamp(Gravity.strength(entity), 0.0, 1.0);
+            return new End(entity, frame, motion, weight, own, toLeadUnits(own, frame, motion, weight));
+        }
+
+        /** Adds a change of velocity, given in lead units. */
+        void add(Vec3 lead) {
+            Gravity.setWorldVelocity(entity, own.add(toOwnUnits(lead, frame, motion, weight)), frame);
+        }
     }
 
     /**
@@ -252,12 +338,20 @@ public final class LeashPhysics {
         }
     }
 
-    /** The holder's velocity (blocks/tick, world), from its centre last tick; zero on the first tick. */
-    private static Vec3 holderVelocity(Entity entity, Entity holder, Vec3 centre) {
+    /** Both ends' velocities (blocks/tick, world), from their centres last tick; zero on the first tick. */
+    private record Track(Vec3 holderVelocity, Vec3 entityVelocity) {
+        static final Track STILL = new Track(Vec3.ZERO, Vec3.ZERO);
+    }
+
+    private static Track track(Entity entity, Entity holder, Vec3 entityCentre, Vec3 holderCentre) {
         long now = entity.level().getGameTime();
-        HolderTrack last = TRACKS.put(entity, new HolderTrack(holder, now, centre));
-        if (last == null || last.holder != holder || now - last.tick != 1L) return Vec3.ZERO;
-        Vec3 v = centre.subtract(last.centre);
+        HolderTrack last = TRACKS.put(entity, new HolderTrack(holder, now, holderCentre, entityCentre));
+        if (last == null || last.holder != holder || now - last.tick != 1L) return Track.STILL;
+        return new Track(velocity(holderCentre, last.centre), velocity(entityCentre, last.entityCentre));
+    }
+
+    private static Vec3 velocity(Vec3 now, Vec3 before) {
+        Vec3 v = now.subtract(before);
         // a teleport or a ship snapping into place is not a velocity
         return v.lengthSqr() > 4.0 ? Vec3.ZERO : v;
     }

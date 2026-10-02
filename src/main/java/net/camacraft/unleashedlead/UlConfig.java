@@ -43,6 +43,7 @@ public final class UlConfig {
     public static final ForgeConfigSpec.BooleanValue PULL_PLAYER_BOATS;
     public static final ForgeConfigSpec.BooleanValue LEASH_BOATS;
     public static final ForgeConfigSpec.BooleanValue MOB_TO_MOB;
+    public static final ForgeConfigSpec.BooleanValue MOB_CHAINS;
     public static final ForgeConfigSpec.BooleanValue SHEARS_SNIP;
     public static final ForgeConfigSpec.BooleanValue DISPENSER_SHEARS;
     public static final ForgeConfigSpec.BooleanValue KNOT_BREAKS_WITH_FENCE;
@@ -121,6 +122,12 @@ public final class UlConfig {
                 .define("leashBoats", true);
         MOB_TO_MOB = s.comment("Sneak-use a mob while you hold leashed mobs to tie them to it (1.21.6).")
                 .define("mobToMob", true);
+        MOB_CHAINS = s.comment("Chains of mobs pull both ways: a lead between two mobs pulls whichever end is further from",
+                        "what moves the chain (a player's lead, a fence, a grab by another mod), so pulling any mob of",
+                        "a chain drags the rest, and two free mobs pull each other by their mass. A lead used on a mob",
+                        "in a chain that hangs from nothing (or from you) takes the whole chain, its leads turned to",
+                        "follow that mob, instead of untying it. False: a lead only ever pulls the mob it is tied to.")
+                .define("mobChains", true);
         SHEARS_SNIP = s.comment("Using shears on an entity cuts its lead and every lead tied to it (1.21.6).")
                 .define("shearsSnip", true);
         DISPENSER_SHEARS = s.comment("A dispenser with shears cuts the leads of the entities in front of it (1.21.6).")

@@ -37,6 +37,12 @@ Distances are measured between the centres of the two entities' bounding boxes, 
 - **Past the snap distance (12 blocks):** the lead snaps (Bedrock and Java 1.21.6; vanilla 1.20.1 snaps at 10). The lead drops, and the snap sound plays at the holder.
 - **No fall damage while held:** a taut lead carrying an entity resets its fall distance, so hanging or being lowered on a lead never builds up fall damage.
 - **Dragged entities face the holder** (1.21.6). A boat turns its bow toward its holder.
+- **Chains of mobs pull both ways** (`mobChains`). A lead between two mobs pulls whichever end is further from what moves the chain, so a chain can be dragged by any of its mobs.
+  - What moves a chain: a mob held by a player, a fence knot or a boat; a mob the lead can't move at all (another mod moves it, such as Physgun Unbound's grab or an MKW kart; a sitting pet; a ride a player steers; a mob with no AI; a mob riding something).
+  - Each lead between two mobs counts how many leads each end is from the nearest of those. The nearer end stays put for that lead, and the further end gets exactly the pull a mob gets from a player: the same spring, damper and cap, against the near end's own motion. It also walks after the near end, and the near end doesn't walk back toward it. Grab the bottom mob of a chain and drag it: its holder follows, and that one's holder follows it.
+  - Two mobs equally far from anything that moves them (a free chain wandering, or a tug of war) pull each other, shared by mass (Camafy's weights): a chicken tied to a pig moves about fifty times as much as the pig.
+  - Players, knots and boats holding a lead are never pulled by it. A chain held by a player at its top works exactly as before.
+  - Which mobs a mob holds is read from each lead's tick (a holder doesn't know what it holds), so a chain is seen as it was over the last two ticks.
 - **Boats a player steers are not pulled.** In Bedrock and Java 1.21.6 a lead has no effect on them, though it still snaps at the snap distance. The option `pullPlayerDrivenBoats` turns the pull on; the force is then applied on the driving player's client, which is where the boat is simulated.
 - **World space and rotated gravity:** every force goes through Camafy's gravity bridge, so pulls are correct under Gravity Unbound. Every holder position goes through Camafy's Valkyrien Skies bridge, so a knot on a ship's fence works.
 - **Resized mobs (Pehkui, bundled in Genesis):** a shrunk or enlarged mob leads like any other.
@@ -77,6 +83,7 @@ Vanilla only ties mobs to fences. Unleashed Lead also ties a lead between two fe
 | Shears cut an entity's lead and every lead tied to it. They cost 1 durability and the leads drop. A lead another player holds is never cut by hand | Java 1.21.6, Bedrock 1.21.90 |
 | A dispenser with shears cuts the leads of an entity in front of it | Java 1.21.6 |
 | Using a lead on an entity tied to a knot or a mob takes it over, and the old lead drops. Entities another player holds can't be taken | Java 1.21.6 |
+| Using a lead on a mob another mob holds takes the whole chain: the mob is yours and the leads up the chain turn to follow it; nothing drops (on a chain you hold by its other end, your lead just moves). A chain tied to a fence or held by another player is taken over as above | Unleashed Lead (`mobChains`) |
 | Using a knot or its fence ties your held leads to it (boats too). With nothing to tie, you take the knot's leads. Sneak-use only ties. An empty knot disappears | Java 1.21.6 |
 | A knot breaks the moment its fence is removed | Bedrock 1.21.100 |
 | A firework boost while gliding breaks the leads you hold | Java 1.21.6 |
@@ -120,6 +127,7 @@ Forge sends this file to every client that joins.
 |---|---|
 | `leashBoats` | `true` |
 | `mobToMob` | `true` |
+| `mobChains` | `true` |
 | `shearsSnip` | `true` |
 | `dispenserShears` | `true` |
 | `knotBreaksWithFence` | `true` |
@@ -205,6 +213,7 @@ With Vanilla Backport installed, Unleashed Lead's `features.*` toggles cover onl
 ```
 - The gametest run uses its own `run-gametest/` directory. Each run starts from a fresh, flat, fixed-seed world.
 - `-PvanillaBackport` puts Vanilla Backport, its Platform library and MixinExtras on the dev runtime from Modrinth's maven. The mod never compiles against them.
+- `ChainLeashTests` (chains of mobs) run in their own batch, `chains`, so adding them didn't move the other suites' plots.
 - `-PshipTests` puts Valkyrien Skies 2.4.11 and Kotlin for Forge on the dev runtime (Modrinth's maven, as Camafy does) and compiles `src/gametest`, whose tests build real ships with VS's own assembler. The release jar never contains them. The test world starts on VS's PhysX backend; `-PvsBackend=classic|physx|jolt` picks another.
 - `-Ppehkui` puts Pehkui 3.8.2 on the dev runtime (Modrinth's maven) and compiles `src/pehkuiTest`, whose nine tests resize pigs and players through Pehkui's API: a 1/16 pig and a 4x pig led by a walking player, a 1/16 pig led by a 1/16 player, the pull per tick at 1, 1/16 and 4, snapping past 12, the lead's size for each pair of ends, a 1/16 pair's lead snapping past 12/16 and pulling past 5/16, collar and hand points, and Camafy's weights. The release jar never contains them. The run sets `mixin.env.ignoreRequired`, because two of Pehkui's container-reach mixins can't apply to ForgeGradle's recompiled Minecraft (they apply in a real game); the log still lists every mixin that failed. It combines with `-PvanillaBackport`.
 - `-PadAstra` puts Ad Astra 1.15.21 and its libraries (Botarium, Resourceful Lib, Resourceful Config) on the dev runtime (Modrinth's maven) and compiles `src/adAstraTest`: pigs in Ad Astra's own `earth_orbit` and `moon`, where Camafy must read 0 and a sixth, the orbit pig must float and the Moon pig fall as Ad Astra drops it. The default suite covers zero gravity with the no-gravity flag (how VS Genesis does it) and the Forge gravity attribute (`ZeroGravityTests`).

@@ -238,8 +238,23 @@ public class PehkuiLeashTests {
      * holds at 11 and snaps at 12.5. A pig grown to 4 is measured from its body: 12.5 blocks from
      * its centre is only about 11 of lead (it holds), 14.5 is about 13 (it snaps).
      */
-    @GameTest(template = PLATFORM, timeoutTicks = 60)
+    @GameTest(template = PLATFORM, timeoutTicks = 200)
     public static void scaledPigsStillSnapPast12(GameTestHelper helper) {
+        // The far big pig stands near the plot's edge. Under load the chunk there may not be ready
+        // (generated and entity-ticking) when the test starts, and a pig spawned into it is never
+        // added to the world, so the pigs are only placed once the whole plot ticks.
+        boolean[] started = {false};
+        helper.onEachTick(() -> {
+            if (started[0]) return;
+            for (BlockPos corner : new BlockPos[]{new BlockPos(0, 1, 0), new BlockPos(23, 1, 0), new BlockPos(0, 1, 23), new BlockPos(23, 1, 23)}) {
+                if (!helper.getLevel().isPositionEntityTicking(helper.absolutePos(corner))) return;
+            }
+            started[0] = true;
+            snapsPast12(helper);
+        });
+    }
+
+    private static void snapsPast12(GameTestHelper helper) {
         LeashFenceKnotEntity k1 = TestUtil.knot(helper, new BlockPos(2, (int) FLOOR, 2));
         LeashFenceKnotEntity k2 = TestUtil.knot(helper, new BlockPos(2, (int) FLOOR, 6));
         LeashFenceKnotEntity k3 = TestUtil.knot(helper, new BlockPos(2, (int) FLOOR, 12));

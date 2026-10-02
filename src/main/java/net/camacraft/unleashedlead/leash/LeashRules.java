@@ -87,7 +87,8 @@ public final class LeashRules {
             return InteractionResult.sidedSuccess(!server);
         }
 
-        // 4. A lead ties it to you; one tied to a knot or a mob is taken over (1.21.6).
+        // 4. A lead ties it to you; one tied to a knot or a mob is taken over (1.21.6), and one in a
+        // chain of mobs brings the chain along (mobChains).
         if (stack.is(Items.LEAD) && Leashes.isLeashable(target) && (Leashes.refused(target)
                 || Leashes.heldByOtherPlayer(target, player) || (server && !mayGrab(player, target)))) {
             // Refused outright, and nobody else may tie it either: vanilla's own lead handling, or
@@ -97,9 +98,13 @@ public final class LeashRules {
         }
         if (stack.is(Items.LEAD) && canAttach(player, target)) {
             if (server) {
-                if (Leashes.holder(target) != null) Leashes.detach(target, true);
-                Leashes.attach(target, player);
-                if (!player.getAbilities().instabuild) stack.shrink(1);
+                ChainTake chain = takeChain(player, target);
+                if (chain == ChainTake.NONE) {
+                    if (Leashes.holder(target) != null) Leashes.detach(target, true);
+                    Leashes.attach(target, player);
+                }
+                // a chain you already held just changed hands: your lead moved, no new one is used
+                if (chain != ChainTake.MOVED && !player.getAbilities().instabuild) stack.shrink(1);
                 UlSounds.play(level, target.position(), UlSounds.LEAD_TIED, player);
                 target.gameEvent(GameEvent.ENTITY_INTERACT, player);
             }
@@ -142,10 +147,57 @@ public final class LeashRules {
         if (!Leashes.isLeashable(target) || Leashes.refused(target)) return false;
         Entity current = Leashes.holder(target);
         if (current instanceof Player) return false; // yours was handled as "untie"; others' can't be taken
-        if (current != null && !UlConfig.on(UlConfig.RELEASH_TAKES_OVER)) return false;
+        if (current != null && !UlConfig.on(UlConfig.RELEASH_TAKES_OVER) && chainToTake(player, target) == null) return false;
         if (!player.level().isClientSide && !mayGrab(player, target)) return false;
         if (target instanceof Mob mob) return mobAccepts(mob, player);
         return true;
+    }
+
+    /** What a lead used on a mob in a chain of mobs did ({@link #takeChain}). */
+    public enum ChainTake {
+        /** Not a chain it can take: the ordinary lead rules apply. */
+        NONE,
+        /** The chain was free: it is yours now, on the new lead. */
+        TAKEN,
+        /** You already held the chain at its other end: your lead moved to this mob. */
+        MOVED
+    }
+
+    /**
+     * A lead used on a mob that another mob holds takes the whole chain rather than untying it
+     * (mobChains): the lead goes on that mob, and every lead from it up the chain is turned to
+     * hang from the mob below, so it now leads the chain and nothing is dropped. A mob can be held
+     * by only one thing, so this is the only way to hold a chain by any mob of it. Only for a
+     * chain that hangs from nothing or from you; one tied to a fence or held by someone else is
+     * taken over as before (just this mob, its old lead dropped).
+     */
+    public static ChainTake takeChain(Player player, Entity target) {
+        List<Entity> path = chainToTake(player, target);
+        if (path == null) return ChainTake.NONE;
+        boolean yours = Leashes.holder(path.get(path.size() - 1)) == player;
+        Leashes.attach(target, player);
+        for (int i = 1; i < path.size(); i++) Leashes.attach(path.get(i), path.get(i - 1));
+        return yours ? ChainTake.MOVED : ChainTake.TAKEN;
+    }
+
+    /**
+     * The chain a lead on {@code target} would take: {@code target} and its holders up to the top
+     * of the chain, or null when the rule doesn't apply (not held by a mob, the chain tied to a
+     * fence or to someone else, a mob of it {@code player} may not grab, mobChains off).
+     */
+    @Nullable
+    private static List<Entity> chainToTake(Player player, Entity target) {
+        if (!UlConfig.on(UlConfig.MOB_CHAINS) || !(target instanceof Mob) || !(Leashes.holder(target) instanceof Mob)) return null;
+        List<Entity> path = LeashChains.pathUp(target);
+        if (path == null || path.size() < 2) return null;
+        Entity top = Leashes.holder(path.get(path.size() - 1));
+        if (top != null && top != player) return null;
+        if (!player.level().isClientSide) {
+            for (Entity e : path) {
+                if (!mayGrab(player, e)) return null;
+            }
+        }
+        return path;
     }
 
     /** {@code Mob.canBeLeashed}, asked as if the mob were free (it refuses whenever it is leashed). */
