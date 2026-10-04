@@ -21,7 +21,9 @@ public final class UlMixinPlugin implements IMixinConfigPlugin {
     /** Only without Vanilla Backport. */
     private static final Set<String> WITHOUT_VB = Set.of("PathfinderMobMixin", "BoatMixin");
     /** Only with Vanilla Backport. */
-    private static final Set<String> WITH_VB = Set.of("VbLeashableMixin", "client.VbLeashFeatureRendererMixin");
+    private static final Set<String> WITH_VB = Set.of("VbLeashableMixin", "VbHappyGhastSyncMixin", "client.VbLeashFeatureRendererMixin");
+    /** Only with Automobility. */
+    private static final Set<String> WITH_AUTOMOBILITY = Set.of("compat.AutomobileLeashMixin");
 
     private boolean vanillaBackport;
 
@@ -40,11 +42,15 @@ public final class UlMixinPlugin implements IMixinConfigPlugin {
      * mixins that target it.
      */
     private static boolean detect() {
+        return present(VANILLA_BACKPORT);
+    }
+
+    private static boolean present(String modId) {
         try {
-            return ModPresence.isLoaded(VANILLA_BACKPORT);
+            return ModPresence.isLoaded(modId);
         } catch (Throwable t) {
             LoadingModList list = LoadingModList.get();
-            return list != null && list.getModFileById(VANILLA_BACKPORT) != null;
+            return list != null && list.getModFileById(modId) != null;
         }
     }
 
@@ -53,6 +59,7 @@ public final class UlMixinPlugin implements IMixinConfigPlugin {
         String name = mixinClassName.startsWith(PACKAGE) ? mixinClassName.substring(PACKAGE.length()) : mixinClassName;
         if (WITHOUT_VB.contains(name)) return !vanillaBackport;
         if (WITH_VB.contains(name)) return vanillaBackport;
+        if (WITH_AUTOMOBILITY.contains(name)) return present("automobility");
         return true;
     }
 

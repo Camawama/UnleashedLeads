@@ -11,7 +11,9 @@ import net.camacraft.unleashedlead.network.UlNetwork;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.tags.BlockTags;
+import net.camacraft.unleashedlead.UlBlocks;
+import net.camacraft.unleashedlead.block.LeadCleatBlock;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.LeashFenceKnotEntity;
@@ -82,14 +84,16 @@ public final class Tethers {
 
     // ------------------------------------------------------------------ geometry
 
-    /** Where a rope pulls on a knot: the knot entity's own position, in the fence's space. */
-    public static Vec3 anchor(BlockPos fence) {
+    /** Where a rope pulls on a knot: the knot entity's own position, in the fence's space (on a lead cleat, its horn). */
+    public static Vec3 anchor(Level level, BlockPos fence) {
+        Vec3 cleat = level.isLoaded(fence) ? LeadCleatBlock.knotPosition(fence, level.getBlockState(fence)) : null;
+        if (cleat != null) return cleat;
         return new Vec3(fence.getX() + 0.5, fence.getY() + LeashFenceKnotEntity.OFFSET_Y, fence.getZ() + 0.5);
     }
 
     /** {@link #anchor} in world space (through the fence's ship, if it is on one). */
     public static Vec3 worldAnchor(ServerLevel level, BlockPos fence) {
-        return Ships.toWorld(level, anchor(fence));
+        return Ships.toWorld(level, anchor(level, fence));
     }
 
     // ------------------------------------------------------------------ queries
@@ -124,7 +128,7 @@ public final class Tethers {
     public static boolean start(ServerLevel level, BlockPos pos, Player player, InteractionHand hand) {
         if (!enabled() || player.isSpectator()) return false;
         ItemStack stack = player.getItemInHand(hand);
-        if (!stack.is(Items.LEAD) || !level.getBlockState(pos).is(BlockTags.FENCES)) return false;
+        if (!stack.is(Items.LEAD) || !UlBlocks.isAnchor(level.getBlockState(pos))) return false;
         if (!MatchPolicies.mayAlter(level, pos, player)) return false;
         TetherData data = TetherData.get(level);
         int onFence = 0;
@@ -339,7 +343,7 @@ public final class Tethers {
         }
         double stiffness = UlConfig.num(UlConfig.TETHER_STIFFNESS);
         double damping = UlConfig.num(UlConfig.TETHER_DAMPING);
-        Vec3 sa = anchor(t.a), sb = anchor(t.b);
+        Vec3 sa = anchor(level, t.a), sb = anchor(level, t.b);
         if (shipA != null) {
             Vec3 other = shipB != null ? sb : wb;
             ends.add(new TetherPhysics.End(shipA.id(), sa.x, sa.y, sa.z, shipB != null ? shipB.id() : ShipRef.NO_ID,
@@ -387,7 +391,7 @@ public final class Tethers {
      */
     private static Presence present(ServerLevel level, BlockPos fence) {
         if (!level.isLoaded(fence) || !level.areEntitiesLoaded(ChunkPos.asLong(fence))) return Presence.AWAY;
-        return level.getBlockState(fence).is(BlockTags.FENCES) ? Presence.HERE : Presence.GONE;
+        return UlBlocks.isAnchor(level.getBlockState(fence)) ? Presence.HERE : Presence.GONE;
     }
 
     /** A knot that was broken, taken down or cut (not one that was only unloaded). */

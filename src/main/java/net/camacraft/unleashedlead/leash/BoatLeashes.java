@@ -125,6 +125,9 @@ public final class BoatLeashes {
             UlNetwork.CHANNEL.toTracking(boat, new LeashLinkMessage(boat.getId(), 0));
         } else if (holder != null && (!boat.isAlive() || !holder.isAlive() || holder.level() != boat.level())) {
             detach(boat, leash, true);
+        } else if (holder != null) {
+            // a driven boat or car tied to a knot on a ship: its driver's client needs the ship's mass
+            KnotMasses.sendToDriver(boat, holder);
         }
     }
 }

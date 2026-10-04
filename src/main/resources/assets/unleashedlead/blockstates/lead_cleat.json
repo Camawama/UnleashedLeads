@@ -1,0 +1,61 @@
+{
+  "variants": {
+    "face=floor,facing=north": {
+      "model": "unleashedlead:block/lead_cleat"
+    },
+    "face=wall,facing=north": {
+      "model": "unleashedlead:block/lead_cleat",
+      "x": 90,
+      "uvlock": true
+    },
+    "face=ceiling,facing=north": {
+      "model": "unleashedlead:block/lead_cleat",
+      "x": 180,
+      "y": 180
+    },
+    "face=floor,facing=east": {
+      "model": "unleashedlead:block/lead_cleat",
+      "y": 90
+    },
+    "face=wall,facing=east": {
+      "model": "unleashedlead:block/lead_cleat",
+      "x": 90,
+      "y": 90,
+      "uvlock": true
+    },
+    "face=ceiling,facing=east": {
+      "model": "unleashedlead:block/lead_cleat",
+      "x": 180,
+      "y": 270
+    },
+    "face=floor,facing=south": {
+      "model": "unleashedlead:block/lead_cleat",
+      "y": 180
+    },
+    "face=wall,facing=south": {
+      "model": "unleashedlead:block/lead_cleat",
+      "x": 90,
+      "y": 180,
+      "uvlock": true
+    },
+    "face=ceiling,facing=south": {
+      "model": "unleashedlead:block/lead_cleat",
+      "x": 180
+    },
+    "face=floor,facing=west": {
+      "model": "unleashedlead:block/lead_cleat",
+      "y": 270
+    },
+    "face=wall,facing=west": {
+      "model": "unleashedlead:block/lead_cleat",
+      "x": 90,
+      "y": 270,
+      "uvlock": true
+    },
+    "face=ceiling,facing=west": {
+      "model": "unleashedlead:block/lead_cleat",
+      "x": 180,
+      "y": 90
+    }
+  }
+}

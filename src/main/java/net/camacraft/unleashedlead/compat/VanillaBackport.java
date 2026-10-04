@@ -64,6 +64,26 @@ public final class VanillaBackport {
         return defaultsFailed;
     }
 
+    private static final String HAPPY_GHAST = "com.blackgear.vanillabackport.common.level.entities.happyghast.HappyGhast";
+    @Nullable private static volatile Class<?> happyGhast;
+    private static volatile boolean happyGhastLooked;
+
+    /** Whether {@code entity} is Vanilla Backport's happy ghast (false without Vanilla Backport, or if it moved the class). */
+    public static boolean isHappyGhast(Entity entity) {
+        if (!happyGhastLooked) {
+            happyGhastLooked = true;
+            if (present()) {
+                try {
+                    happyGhast = Class.forName(HAPPY_GHAST, false, VanillaBackport.class.getClassLoader());
+                } catch (Throwable t) {
+                    UnleashedLead.LOGGER.info("Vanilla Backport's happy ghast not found at {}; its facing fixes stay off", HAPPY_GHAST);
+                }
+            }
+        }
+        Class<?> c = happyGhast;
+        return c != null && c.isInstance(entity);
+    }
+
     /** Whether Vanilla Backport is installed (safe at any point in loading). */
     public static boolean present() {
         return ModPresence.isLoaded(MOD_ID);

@@ -7,13 +7,16 @@
   "refmap": "unleashedlead.refmap.json",
   "mixins": [
     "BoatMixin",
+    "compat.AutomobileLeashMixin",
     "FenceBlockMixin",
     "HangingEntityMixin",
     "LeadItemMixin",
+    "LeashKnotMixin",
     "MobMixin",
     "PathfinderMobMixin",
     "ShearsDispenseItemBehaviorMixin",
-    "VbLeashableMixin"
+    "VbLeashableMixin",
+    "VbHappyGhastSyncMixin"
   ],
   "client": [
     "client.MobRendererMixin",

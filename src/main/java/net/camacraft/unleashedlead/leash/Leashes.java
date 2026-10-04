@@ -24,6 +24,8 @@ import java.util.List;
  *   <li>mobs: vanilla's own {@code Mob} leash (Vanilla Backport uses the same fields);</li>
  *   <li>boats, chest boats and rafts: Vanilla Backport's {@code Leashable} when it is installed,
  *   else this mod's {@link BoatLeash};</li>
+ *   <li>Automobility's vehicles: this mod's {@link VehicleLeash}, with or without Vanilla Backport
+ *   ({@link VehicleLeashes});</li>
  *   <li>Vanilla Backport's happy ghast: a mob, so the first case.</li>
  * </ul>
  * Attaching and detaching broadcast to clients; neither plays a sound (callers pick the sound).
@@ -35,6 +37,7 @@ public final class Leashes {
     public static boolean isLeashable(Entity entity) {
         if (entity instanceof Mob) return true;
         if (VanillaBackport.isLeashable(entity)) return true;
+        if (entity instanceof VehicleLeash) return UlConfig.on(UlConfig.LEASH_VEHICLES);
         return entity instanceof BoatLeash && UlConfig.on(UlConfig.LEASH_BOATS);
     }
 
@@ -60,6 +63,7 @@ public final class Leashes {
             VanillaBackport.attach(entity, holder);
         } else if (entity instanceof BoatLeash leash) {
             BoatLeashes.attach(entity, leash, holder);
+            VehicleLeashes.changed(entity);
         }
     }
 
@@ -72,6 +76,7 @@ public final class Leashes {
             VanillaBackport.detach(entity, dropItem);
         } else if (entity instanceof BoatLeash leash) {
             BoatLeashes.detach(entity, leash, dropItem);
+            VehicleLeashes.changed(entity);
         }
     }
 
@@ -113,6 +118,9 @@ public final class Leashes {
      */
     public static boolean refused(Entity entity) {
         if (UlConfig.neverLeash(entity.getType())) return true;
+        // MKW Mobility claims the motion of every vehicle it drives, and takes a lead's pull through Camafy's
+        // Impulses as its own speed; only a vehicle it holds outright (in a race) is refused
+        if (entity instanceof VehicleLeash) return PhysicsOwnership.heldOutrightByOther(entity, LeashPhysics.OWNER);
         return PhysicsOwnership.claimedByOther(entity, PhysicsAspect.MOTION, LeashPhysics.OWNER);
     }
 

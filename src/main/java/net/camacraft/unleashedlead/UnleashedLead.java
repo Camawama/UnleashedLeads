@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import net.camacraft.unleashedlead.client.UnleashedLeadClient;
 import net.camacraft.unleashedlead.compat.VanillaBackport;
 import net.camacraft.unleashedlead.leash.LeashEvents;
+import net.camacraft.unleashedlead.leash.VehicleLeashes;
 import net.camacraft.unleashedlead.network.UlNetwork;
 import net.camacraft.unleashedlead.recipe.ConfigCondition;
 import net.camacraft.unleashedlead.tether.TetherPhysics;
@@ -44,9 +45,11 @@ public final class UnleashedLead {
         context.registerConfig(ModConfig.Type.CLIENT, UlConfig.CLIENT_SPEC);
 
         UlSounds.REGISTER.register(modBus);
+        UlBlocks.register(modBus);
         CraftingHelper.register(ConfigCondition.Serializer.INSTANCE);
         UlNetwork.init();
         LeashEvents.register();
+        VehicleLeashes.register();
         // fence-to-fence ropes pull ships through Camafy's one physics hook (a no-op without VS)
         modBus.addListener(UnleashedLead::onCommonSetup);
 

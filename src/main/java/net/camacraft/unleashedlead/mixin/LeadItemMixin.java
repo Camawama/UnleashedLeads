@@ -34,6 +34,15 @@ public abstract class LeadItemMixin {
         return LeashRules.bindPlayerMobs(player, level, pos);
     }
 
+    /** A lead used on a lead cleat ties to it as to a fence (also sneaking, when the cleat's own use is skipped). */
+    @WrapOperation(method = "useOn",
+            at = @At(value = "INVOKE", target = "Lnet/minecraft/world/level/block/state/BlockState;is(Lnet/minecraft/tags/TagKey;)Z"))
+    private boolean unleashedlead$cleatsToo(net.minecraft.world.level.block.state.BlockState state,
+                                            net.minecraft.tags.TagKey<net.minecraft.world.level.block.Block> tag,
+                                            Operation<Boolean> original) {
+        return original.call(state, tag) || net.camacraft.unleashedlead.UlBlocks.isAnchor(state);
+    }
+
     @WrapOperation(method = "useOn",
             at = @At(value = "INVOKE",
                     target = "Lnet/minecraft/world/item/LeadItem;bindPlayerMobs(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/level/Level;Lnet/minecraft/core/BlockPos;)Lnet/minecraft/world/InteractionResult;"))

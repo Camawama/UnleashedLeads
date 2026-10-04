@@ -42,6 +42,9 @@ public final class UlConfig {
     public static final ForgeConfigSpec.BooleanValue FACE_HOLDER;
     public static final ForgeConfigSpec.BooleanValue PULL_PLAYER_BOATS;
     public static final ForgeConfigSpec.BooleanValue LEASH_BOATS;
+    public static final ForgeConfigSpec.BooleanValue LEASH_VEHICLES;
+    public static final ForgeConfigSpec.BooleanValue PULL_DRIVEN_VEHICLES;
+    public static final ForgeConfigSpec.BooleanValue MASS_LEADS;
     public static final ForgeConfigSpec.BooleanValue MOB_TO_MOB;
     public static final ForgeConfigSpec.BooleanValue MOB_CHAINS;
     public static final ForgeConfigSpec.BooleanValue SHEARS_SNIP;
@@ -62,6 +65,8 @@ public final class UlConfig {
 
     public static final ForgeConfigSpec CLIENT_SPEC;
     public static final ForgeConfigSpec.BooleanValue ROPE_RENDERING;
+    public static final ForgeConfigSpec.BooleanValue GHAST_KEEP_TURNS;
+    public static final ForgeConfigSpec.BooleanValue GHAST_FACING_RESYNC;
     public static final ForgeConfigSpec.DoubleValue ROPE_THICKNESS;
     public static final ForgeConfigSpec.DoubleValue ROPE_SEGMENT_LENGTH;
     public static final ForgeConfigSpec.IntValue ROPE_MAX_POINTS;
@@ -114,12 +119,25 @@ public final class UlConfig {
                         "a lead has no effect on a player-driven boat (it still snaps at the snap distance).",
                         "When on, the pull is applied on the driving player's client, where the boat is simulated.")
                 .define("pullPlayerDrivenBoats", false);
+        PULL_DRIVEN_VEHICLES = s.comment("Let a lead pull an Automobility vehicle while a player drives it: a car on a lead is towed",
+                        "even with someone at the wheel, and can't drive further than its lead from a fence. Applied on the",
+                        "driving player's client, where the car is simulated, through MKW Mobility.")
+                .define("pullDrivenVehicles", true);
+        MASS_LEADS = s.comment("Leads pull both ends by their masses (Camafy's weights), momentum kept: a player leading a",
+                        "mob heavier than themselves is slowed and held (an iron golem or a parked car holds them at the",
+                        "lead's length), a light mob barely slows them; a vehicle or a ridden horse feels what it tows; a",
+                        "lead to a knot on a Valkyrien Skies ship pulls the ship at the knot. Fence knots in the world don't",
+                        "move. Chains of mobs keep their own rules. Off: leads only pull the leashed entity, as before.")
+                .define("massLeads", true);
         s.pop();
 
         s.comment("Bedrock and 1.21 to 1.21.6 lead features.").push("features");
         LEASH_BOATS = s.comment("Boats, chest boats and bamboo rafts can be leashed (1.21). Left to Vanilla Backport",
                         "when it is installed, since it leashes boats itself.")
                 .define("leashBoats", true);
+        LEASH_VEHICLES = s.comment("Automobility's vehicles (RIAutomobility's included) can be leashed and towed. A kart in an MKW",
+                        "race can't be.")
+                .define("leashVehicles", true);
         MOB_TO_MOB = s.comment("Sneak-use a mob while you hold leashed mobs to tie them to it (1.21.6).")
                 .define("mobToMob", true);
         MOB_CHAINS = s.comment("Chains of mobs pull both ways: a lead between two mobs pulls whichever end is further from",
@@ -173,6 +191,12 @@ public final class UlConfig {
         TETHER_SLACK = s.comment("Rope added to the distance between the fences when a rope is tied, in blocks.")
                 .defineInRange("slack", 0.5, 0.0, 16.0);
         s.pop();
+
+        s.comment("Vanilla Backport compatibility.").push("vanillaBackport");
+        GHAST_FACING_RESYNC = s.comment("Resend each happy ghast's facing to its watchers every 2 seconds, so a turn a client missed never",
+                        "leaves its ghast (and the boat it carries) drawn crooked for long. One small packet per ghast.")
+                .define("ghastFacingResync", true);
+        s.pop();
         SERVER_SPEC = s.build();
 
         ForgeConfigSpec.Builder r = new ForgeConfigSpec.Builder();
@@ -205,6 +229,13 @@ public final class UlConfig {
                 .define("color", "#7F664C");
         ROPE_STRIPE_SHADE = r.comment("Brightness of every other stripe, for vanilla's two-tone lead look (1 = no stripes).")
                 .defineInRange("stripeShade", 0.7, 0.0, 1.0);
+        r.pop();
+
+        r.comment("Vanilla Backport compatibility.").push("vanillaBackport");
+        GHAST_KEEP_TURNS = r.comment("A happy ghast's turn still being drawn survives a packet that only moves it (1.20.1 replaced the",
+                        "turn with the current facing, and after a lag spike the ghast stayed facing the old way until it turned",
+                        "again, its boat drawn crooked against it).")
+                .define("ghastKeepTurns", true);
         r.pop();
         CLIENT_SPEC = r.build();
     }

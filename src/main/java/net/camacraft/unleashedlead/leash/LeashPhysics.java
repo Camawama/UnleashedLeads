@@ -2,9 +2,13 @@ package net.camacraft.unleashedlead.leash;
 
 import com.google.common.collect.MapMaker;
 import net.camacraft.camafy.compat.gravity.Gravity;
+import net.camacraft.camafy.compat.vs.ShipForces;
+import net.camacraft.camafy.compat.vs.ShipRef;
+import net.camacraft.camafy.compat.vs.Ships;
 import net.camacraft.camafy.compat.gravity.GravityFrame;
 import net.camacraft.camafy.compat.scale.EntityScale;
 import net.camacraft.camafy.physics.PhysicsAspect;
+import net.camacraft.camafy.physics.Impulses;
 import net.camacraft.camafy.physics.PhysicsOwnership;
 import net.camacraft.camafy.weight.Weights;
 import net.camacraft.unleashedlead.UlConfig;
@@ -12,12 +16,16 @@ import net.camacraft.unleashedlead.UlSounds;
 import net.camacraft.unleashedlead.UnleashedLead;
 import net.camacraft.unleashedlead.compat.VanillaBackport;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.TamableAnimal;
+import net.minecraft.world.entity.decoration.LeashFenceKnotEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.vehicle.Boat;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
@@ -164,7 +172,16 @@ public final class LeashPhysics {
         double free = freeLength(entity) * reach;
         if (d <= free) return new Tick(d, false, false, reach);
         // A ride a player steers (a horse, a strider) is theirs to steer; boats decide for themselves.
-        if (pullEntity && !(entity instanceof Boat) && entity.getControllingPassenger() instanceof Player) pullEntity = false;
+        if (pullEntity && !(entity instanceof Boat) && !(entity instanceof VehicleLeash && UlConfig.on(UlConfig.PULL_DRIVEN_VEHICLES))
+                && entity.getControllingPassenger() instanceof Player) {
+            pullEntity = false;
+        }
+        if (byMass(entity, holder)) {
+            // something heavy at either end: both ends are pulled, by their masses (see pullByMass)
+            pullByMass(entity, holder, a, h, d, free, track, pullEntity, holderSimulatedHere(holder));
+            afterTaut(entity, holder, a, h, reach);
+            return new Tick(d, true, false, reach);
+        }
         LeashChains.Role role = pullHolder ? LeashChains.role(entity, holder) : LeashChains.Role.ENTITY;
         switch (role) {
             case ENTITY -> {
@@ -196,7 +213,10 @@ public final class LeashPhysics {
      * chain of mobs whichever end is nearer what moves the chain.
      */
     private static void applyPull(Entity entity, Vec3 a, Vec3 h, double d, double free, Vec3 holderVelocity) {
-        if (PhysicsOwnership.claimedByOther(entity, PhysicsAspect.MOTION, OWNER)) return;
+        // a vehicle MKW Mobility drives (it claims its motion) takes the pull as a velocity change through
+        // Camafy's Impulses, which MKW turns into the kart's own speed; anything else another mod moves is left alone
+        boolean vehicle = entity instanceof VehicleLeash;
+        if (!vehicle && PhysicsOwnership.claimedByOther(entity, PhysicsAspect.MOTION, OWNER)) return;
         Vec3 out = a.subtract(h);
         double centres = out.length();
         if (centres < 1.0E-9) return;
@@ -214,7 +234,7 @@ public final class LeashPhysics {
             Vec3 kick = new Vec3(Math.copySign(toward.x * toward.x * 0.4, toward.x),
                     Math.copySign(toward.y * toward.y * 0.4, toward.y),
                     Math.copySign(toward.z * toward.z * 0.4, toward.z));
-            Gravity.setWorldVelocity(entity, own.add(toOwnUnits(kick, frame, motion, weight)), frame);
+            push(entity, own, toOwnUnits(kick, frame, motion, weight), frame, vehicle);
             return;
         }
 
@@ -225,7 +245,16 @@ public final class LeashPhysics {
         // never add pull once the entity already closes on the holder at maxPull
         dv = Math.max(dv, Math.min(0.0, -maxPull - radial));
         if (dv >= 0.0) return;
-        Gravity.setWorldVelocity(entity, own.add(toOwnUnits(n.scale(dv), frame, motion, weight)), frame);
+        push(entity, own, toOwnUnits(n.scale(dv), frame, motion, weight), frame, vehicle);
+    }
+
+    /** Adds {@code change} (world axes) to an entity's velocity {@code own}: a vehicle through Camafy's Impulses. */
+    private static void push(Entity entity, Vec3 own, Vec3 change, GravityFrame frame, boolean vehicle) {
+        if (vehicle) {
+            Impulses.add(entity, change);
+        } else {
+            Gravity.setWorldVelocity(entity, own.add(change), frame);
+        }
     }
 
     /**
@@ -261,6 +290,182 @@ public final class LeashPhysics {
         if (entityShare > 0.0) e.add(n.scale(dv * entityShare));
         if (entityShare < 1.0) o.add(n.scale(-dv * (1.0 - entityShare)));
         return entityShare < 1.0;
+    }
+
+    // ------------------------------------------------------------------ leads by mass
+
+    /** How far short of its snap distance a lead with mass at both ends goes taut as a tow rope (blocks, on a normal lead). */
+    private static final double TOW_MARGIN = 1.5;
+
+    /** How far around a holder the client looks for the leads it holds (blocks). */
+    private static final double HOLDER_SEARCH = 24.0;
+
+    /**
+     * A knot on a Valkyrien Skies ship: the ship, the knot's centre in the ship's own (shipyard) space,
+     * and the mass the lead meets there (kg: the ship's physical mass; infinite when it isn't known, which
+     * makes the knot hold like a fence in the world).
+     */
+    public record ShipKnot(ShipRef ship, Vec3 shipPos, double massKg) {}
+
+    /**
+     * The knot {@code holder} is, if it is a knot on a Valkyrien Skies ship; else null. On a client the
+     * ship's mass is only known while the server sends it ({@link KnotMasses}: to the driver of a vehicle
+     * tied to it).
+     */
+    @Nullable
+    public static ShipKnot shipKnot(Entity holder) {
+        if (!(holder instanceof LeashFenceKnotEntity knot)) return null;
+        Level level = knot.level();
+        Vec3 c = knot.getBoundingBox().getCenter();
+        if (!Ships.inShipyard(level, c.x, c.y, c.z)) return null;
+        ShipRef ship = Ships.managing(level, c.x, c.y, c.z);
+        if (ship == null) return null;
+        double mass = level.isClientSide ? KnotMasses.get(knot.getId()) : ship.physicalMass();
+        if (!(mass > 0.0) || !Double.isFinite(mass)) mass = Double.POSITIVE_INFINITY;
+        return new ShipKnot(ship, c, mass);
+    }
+
+    /**
+     * Whether the lead between {@code entity} and {@code holder} is shared out by mass ({@code massLeads}): a
+     * player holds it (they feel what they lead: slowed by a heavy mob, held by a car or an iron golem, barely
+     * by a chicken), a vehicle or a ridden mount holds it (it feels what it tows), or the holder is a knot on a
+     * ship (the ship is pulled at the knot too). A knot in the world never moves, and chains of mobs keep their
+     * own rule ({@link LeashChains}, which shares by mass between two free mobs already).
+     */
+    public static boolean byMass(Entity entity, Entity holder) {
+        if (!UlConfig.on(UlConfig.MASS_LEADS) || !UlConfig.on(UlConfig.PHYSICS)) return false;
+        if (holder instanceof Player || holder instanceof VehicleLeash) return true;
+        if (holder.getControllingPassenger() instanceof Player) return true; // a horse a player rides, towing
+        return holder instanceof LeashFenceKnotEntity && shipKnot(holder) != null;
+    }
+
+    /** Whether this side moves {@code holder}: a ship's knot on the server, a player on its own client, a vehicle where it is simulated. */
+    private static boolean holderSimulatedHere(Entity holder) {
+        if (holder instanceof LeashFenceKnotEntity) return !holder.level().isClientSide;
+        if (holder instanceof Player player) return player.isLocalPlayer();
+        return holder.isControlledByLocalInstance();
+    }
+
+    /**
+     * The mass an end of a lead counts: Camafy's weight of it with its riders and everything they carry (kg),
+     * or infinity for one the lead can't move: a vehicle MKW holds outright (a race), a sitting pet, a mob
+     * without AI, something riding something else, an entity another mod moves. A ride a player steers keeps
+     * its mass: it is moved by its share on the rider's client ({@link #clientHolderTick}).
+     */
+    static double massFor(Entity e) {
+        if (e instanceof VehicleLeash) {
+            if (PhysicsOwnership.heldOutrightByOther(e, OWNER)) return Double.POSITIVE_INFINITY;
+            return Math.max(Weights.massWithPassengersKg(e), MIN_MASS_KG);
+        }
+        if (PhysicsOwnership.claimedByOther(e, PhysicsAspect.MOTION, OWNER) || e.isPassenger()) return Double.POSITIVE_INFINITY;
+        if (e instanceof Mob mob && (mob.isNoAi() || (mob instanceof TamableAnimal t && t.isInSittingPose()))) {
+            return Double.POSITIVE_INFINITY;
+        }
+        return Math.max(Weights.massWithPassengersKg(e), MIN_MASS_KG);
+    }
+
+    /**
+     * A taut lead with mass at both ends: the spring and damper of {@link #applyPull} work out one change of
+     * the speed at which the ends part ({@code dv}, along the lead), and the two ends share it by mass, the
+     * lighter one taking more ({@code m_other / (m_entity + m_holder)} each), so the momentum given one end is
+     * taken from the other. A knot in the world counts as infinitely heavy (the entity takes it all, as
+     * before); a knot on a ship is the ship, pushed by an impulse at the knot through Camafy's
+     * {@link ShipForces} (so a lead tied off-centre turns it too). Each end is moved only on the side that
+     * simulates it ({@code applyEntity}, {@code applyHolder}): mobs, parked vehicles and ships on the server, a
+     * player or a driven vehicle on its own client ({@link #clientHolderTick}).
+     */
+    private static void pullByMass(Entity entity, Entity holder, Vec3 a, Vec3 h, double d, double free, Track track,
+                                   boolean applyEntity, boolean applyHolder) {
+        Vec3 out = a.subtract(h);
+        double centres = out.length();
+        if (centres < 1.0E-9) return;
+        Vec3 n = out.scale(1.0 / centres); // outward, holder to entity
+        ShipKnot knot = shipKnot(holder);
+        End e = End.of(entity);
+        End o = knot == null ? End.of(holder) : null;
+        // each end's velocity in lead units: its own where this side moves it, else as it was seen to move
+        Vec3 ve = applyEntity ? e.lead : track.entityVelocity;
+        Vec3 vh = o != null && applyHolder ? o.lead : track.holderVelocity;
+        double maxPull = UlConfig.num(UlConfig.MAX_PULL);
+        double radial = ve.subtract(vh).dot(n); // > 0: the ends are parting
+        double dv = -Math.min(UlConfig.num(UlConfig.STIFFNESS) * (d - free), maxPull);
+        if (radial > 0.0) dv -= radial * UlConfig.num(UlConfig.RADIAL_DAMPING);
+        dv = Math.max(dv, Math.min(0.0, -maxPull - radial));
+        // Near its end the lead is a tow rope at full stretch: the ends stop parting there and whatever stretch is past
+        // that point is taken back within the tick, whatever that takes (still shared by mass), so a car drags what
+        // it tows instead of snapping the lead on it (a mob dragged along the ground loses almost half its speed to
+        // friction every tick, which the spring alone never makes up). A jerk past the snap distance within one tick
+        // still snaps it.
+        double reach = LeadScale.reach(entity, holder);
+        double towAt = (snapDistance(entity) - TOW_MARGIN) * reach;
+        if (d > towAt) dv = Math.min(dv, -Math.max(radial, 0.0) - (d - towAt));
+        if (dv >= 0.0) return;
+        double me = massFor(entity);
+        double mh = knot != null ? knot.massKg() : massFor(holder);
+        double entityShare;
+        if (Double.isInfinite(mh)) entityShare = 1.0;
+        else if (Double.isInfinite(me)) entityShare = 0.0;
+        else entityShare = mh / (me + mh);
+        LAST.put(entity, new Shares(me, mh, entityShare, dv));
+        if (applyEntity && entityShare > 0.0) {
+            Vec3 change = n.scale(dv * entityShare);
+            if (entity instanceof VehicleLeash) Impulses.add(entity, toOwnUnits(change, e.frame, e.motion, e.weight));
+            else e.add(change);
+        }
+        double holderShare = 1.0 - entityShare;
+        if (!applyHolder || holderShare <= 0.0) return;
+        Vec3 holderChange = n.scale(-dv * holderShare); // toward the entity, blocks per tick
+        if (knot != null) {
+            if (holder.level() instanceof ServerLevel level) {
+                // the ship's share as an impulse at the knot: its mass times the change in m/s
+                ShipForces.applyImpulseAtShipPos(level, knot.ship().id(), holderChange.scale(20.0 * knot.massKg()), knot.shipPos());
+            }
+        } else if (holder instanceof VehicleLeash) {
+            Impulses.add(holder, toOwnUnits(holderChange, o.frame, o.motion, o.weight));
+        } else {
+            o.add(holderChange);
+        }
+        PhysicsOwnership.claim(holder, OWNER, PhysicsAspect.G_FORCE.bit, CLAIM_TICKS);
+    }
+
+    /** The masses and shares of a lead's last pull by mass ({@code me}, {@code mh} in kg, the entity's share, dv), for the tests. */
+    public record Shares(double entityKg, double holderKg, double entityShare, double dv) {}
+
+    private static final Map<Entity, Shares> LAST = new MapMaker().weakKeys().makeMap();
+
+    /** The last pull by mass on the lead of {@code entity}, or null (tests and the harness). */
+    @Nullable
+    public static Shares lastShares(Entity entity) {
+        return LAST.get(entity);
+    }
+
+    /**
+     * The local player's ends of leads by mass, which only its own client can move, since a player moves
+     * themselves: the player holding a lead (slowed and held by what they lead, by its share), and anything the
+     * player steers that holds a lead (a car, a horse: it feels what it tows). Client, end of each tick, after
+     * the player has moved, so the tension shapes the next step. The other end and the snap are the server's.
+     */
+    public static void clientHolderTick(@Nullable Player player) {
+        if (player == null || !UlConfig.on(UlConfig.MASS_LEADS) || !UlConfig.on(UlConfig.PHYSICS)) return;
+        holderSide(player);
+        for (Entity vehicle = player.getVehicle(); vehicle != null; vehicle = vehicle.getVehicle()) {
+            if (vehicle.isControlledByLocalInstance()) holderSide(vehicle);
+        }
+    }
+
+    private static void holderSide(Entity holder) {
+        for (Entity entity : Leashes.leashedTo(holder, HOLDER_SEARCH)) {
+            if (!byMass(entity, holder) || entity.level() != holder.level()) continue;
+            Vec3 a = LeashGeometry.knownCentre(entity);
+            Vec3 h = LeashGeometry.knownCentre(holder);
+            if (a == null || h == null) continue;
+            Track track = track(entity, holder, a, h);
+            double d = LeashGeometry.span(entity, a, holder, h);
+            double reach = LeadScale.reach(entity, holder);
+            double free = freeLength(entity) * reach;
+            if (d <= free || d > snapDistance(entity) * reach) continue;
+            pullByMass(entity, holder, a, h, d, free, track, false, true);
+        }
     }
 
     /** The least mass an end is taken to have, so a weightless one doesn't take the whole pull by a division. */

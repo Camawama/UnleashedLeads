@@ -4,6 +4,9 @@ Bedrock Edition's leads on Java Edition, for Forge 1.20.1. Also backports the le
 
 - **Rope:** every lead is drawn as a simulated rope instead of vanilla's leash line. It sags, sways, bounces, pays out slack, drapes over fences and wraps around posts.
 - **Physics:** leashed mobs are pulled by an elastic lead. A mob hanging from a knot over a drop swings like a pendulum.
+- **Vehicles:** Automobility's cars (RIAutomobility's included) take a lead too: a car tows whatever it holds, and one tied to a fence can't drive past its lead.
+- **Leads by mass:** a lead pulls both ends by their masses (Camafy's weights). Leading a mob heavier than you slows you down, a chicken barely does, and an iron golem holds you at the lead's length; a car or a ridden horse feels what it tows; a lead to a ship's fence tows the ship.
+- **Lead cleat:** a small iron cleat fixed to any face of a block. Leads and fence-to-fence ropes tie to it as to a fence, and it has no collision, so it is the clean way to rig ropes on a ship.
 - **1.21.6 rules:** leashed boats and rafts, mob-to-mob leads, shears that cut leads, the 12-block snap distance, the string recipe and the new lead sounds.
 - **Fence-to-fence ropes:** tie a lead from one fence to another. On a Valkyrien Skies ship the rope moors the ship: it holds it back, several ropes hold it better, and it snaps when pulled too hard.
 
@@ -11,7 +14,7 @@ Bedrock Edition's leads on Java Edition, for Forge 1.20.1. Also backports the le
 - **Package:** `net.camacraft.unleashedlead`
 - **Author:** Camawama
 - **Licence:** GPL-3.0 (see `LICENSE.txt`, the same licence as Camafy). To change it, edit `mod_license` in `gradle.properties`, replace `LICENSE.txt`, and update this line.
-- **Requires:** Minecraft 1.20.1, Forge 47.4 or later, and [Camafy](../../CAMAFY) 0.1.7 or later (below 0.2).
+- **Requires:** Minecraft 1.20.1, Forge 47.4 or later, and [Camafy](../../CAMAFY) 0.1.23 or later (below 0.2).
 - **Sides:** both. The server runs the leash physics and rules. The client draws the rope. Both sides need the mod.
 
 ## What it does
@@ -44,6 +47,11 @@ Distances are measured between the centres of the two entities' bounding boxes, 
   - Players, knots and boats holding a lead are never pulled by it. A chain held by a player at its top works exactly as before.
   - Which mobs a mob holds is read from each lead's tick (a holder doesn't know what it holds), so a chain is seen as it was over the last two ticks.
 - **Boats a player steers are not pulled.** In Bedrock and Java 1.21.6 a lead has no effect on them, though it still snaps at the snap distance. The option `pullPlayerDrivenBoats` turns the pull on; the force is then applied on the driving player's client, which is where the boat is simulated.
+- **Automobility's vehicles take a lead** (`leashVehicles`; RIAutomobility's vehicles too, which extend Automobility's). Use a lead on a car to hold it, tie it to a fence or to a mob, untie it, cut it with shears, exactly as a boat.
+  - The lead pulls a car and what it is tied to by their masses (see **Leads by mass** below): Camafy's weight of the car with its riders. A car holding a lead tows what is on it (a pig, a boat, a mob, a raft by its cleat), slowed by what it tows; a car tied to a fence can't drive further than its lead. A driven car is pulled on the driver's client, where it is simulated (`pullDrivenVehicles`); the snap is the server's. How heavy a car is, and so whether you can drag one, is Camafy's: its `entityWeights` (Camafy weighs an Automobility car by its hitbox, 99 kg, unless that table has an entry for it).
+  - MKW Mobility scripts these cars and claims their motion, so the pull reaches them through Camafy's `Impulses`, which MKW turns into the car's own speed (a write to its velocity would be gone a tick later). A car in an MKW race is held outright by MKW and can't be leashed.
+  - The lead is saved with the car (in its persistent data) and comes back when it loads. Destroying the car drops the lead.
+  - Nothing is injected into Automobility's code: a mixin only adds the leash fields to its `AutomobileEntity` (applied only with Automobility installed), and the ticks run from Forge events.
 - **World space and rotated gravity:** every force goes through Camafy's gravity bridge, so pulls are correct under Gravity Unbound. Every holder position goes through Camafy's Valkyrien Skies bridge, so a knot on a ship's fence works.
 - **Resized mobs (Pehkui, bundled in Genesis):** a shrunk or enlarged mob leads like any other.
   - Pehkui scales how far a mob's own velocity moves it (a pig at 1/16 moves 1/16 of it). The pull makes up for that across the ground (Camafy's `EntityScale.motion`), so a tiny pig keeps up with its holder (the pull reaches 0.6 blocks a tick, faster than sprinting) instead of falling behind until the lead snaps. Up and down it does not: Pehkui scales a mob's fall too, and the lead lifts a resized mob against its own weight exactly as it lifts a normal one, so a tiny pig is dragged along the ground rather than flown like a kite. Where it weighs nothing (in space) there is no weight to lift, and the pull works in real blocks on every axis.
@@ -56,8 +64,25 @@ Distances are measured between the centres of the two entities' bounding boxes, 
     - The fence knot is drawn as it always is: it is sized to the fence post it wraps.
     - A lead between two normal-sized ends is exactly as before: every length is multiplied by exactly 1.
 
+### Leads by mass
+A lead with something heavy on it pulls both ends, each by the other's share of their masses (`massLeads`, on). The lead works out one change in the speed at which its ends part (the same spring and damper as always), the lighter end takes more of it, and the momentum given one end is taken from the other.
+
+- **Which leads:** every lead a player holds, every lead a vehicle or a horse a player rides holds, and every lead to a knot on a Valkyrien Skies ship (the ship is pulled at the knot, through Camafy's ship forces, so a lead tied off-centre turns it too). A knot in the world never moves, and chains of mobs keep their own rules (two free mobs already share by mass).
+- **Masses:** Camafy's weights, nothing else: an entity with its riders and everything they carry (`Weights.massWithPassengersKg`), and a ship's physical mass (Valkyrien Skies' block masses, scaled with the ship). A car in an MKW race, a sitting pet, a mob with no AI, something riding something else, or an entity another mod moves counts as immovable.
+- **What you feel:** you move yourself, so your share is applied on your own client, after your step, and shapes the next one. Walking and sprinting with a lead, against 4.3 and 5.6 blocks a second free: a chicken (3 kg) 4.3 and 5.4, it follows at once; a pig (150 kg) 3.1 and 2.0; a cow (650 kg) 2.2 and 0.6; an iron golem (3000 kg) holds you at the lead's length when you sprint (0.24), and you only make headway as fast as it walks after you. The heavier end gives slowly and the lead stays taut.
+- **The tow rope:** within 1.5 blocks of its snap distance a lead with mass on both ends stops its ends parting altogether, still shared by mass, as a rope at full stretch would. A car drags a pig behind it rather than snapping the lead on it; only a jerk that takes the ends past the snap distance in a single tick still snaps it.
+- **Where it is applied:** each end on the side that moves it. Mobs, parked cars and ships on the server; a player and the car a player drives on that player's own client. The server sends the driver the mass of the ship their car's lead is tied to (clients don't otherwise know ship masses).
+- **A ride a player steers** (a horse) isn't pulled by its lead, as before, but what it is tied to is: a horse ridden away from a raft tied to it drags the raft by the raft's share, and snaps the lead if it gets too far ahead.
+
+### The lead cleat
+A small iron cleat (`unleashedlead:lead_cleat`, crafted from four iron nuggets and a string, two at a time; in the Tools tab next to the lead), placed on any face of a block like a button.
+
+- **Ties like a fence:** use it with mobs on your lead to tie them, with a lead in hand to start a fence-to-fence rope or to tie one you carry, or empty-handed to take its leads back. A lead used on it while sneaking ties too. Its knot sits on the cleat's horn, and a rope pulls there.
+- **Snags nothing:** it has no collision at all. On a Valkyrien Skies ship it takes the one cell any block takes, weighs 1 kg, and nothing bumps into it. It isn't a fence: fences don't connect to it and mobs don't walk around it.
+- **Goes with its block:** breaking it (or the block it hangs on) takes its knot and drops the leads, as a fence would.
+
 ### Fence-to-fence ropes and mooring ships
-Vanilla only ties mobs to fences. Unleashed Lead also ties a lead between two fences.
+Vanilla only ties mobs to fences. Unleashed Lead also ties a lead between two fences (or lead cleats, or a fence and a cleat).
 
 - **Tying one:** use a lead on a fence. A knot appears and you carry the rope's free end (one lead is used). Use another fence, or its knot, within 12 blocks, and the rope is tied there. It is as long as the distance between the two knots when tied, plus `tethers.slack` (half a block).
 - **Taking it back:** using the rope's first fence again takes the lead back off (it drops there). Using a knot with an empty hand takes its ropes into your hand, as it does leads: the end at that knot comes off and the other end stays tied. Sneak-use only ties.
@@ -120,12 +145,15 @@ Forge sends this file to every client that joins.
 | `noFallDamageWhileHeld` | `true` | A taut lead resets fall distance. |
 | `faceHolder` | `true` | Dragged entities turn toward the holder. |
 | `pullPlayerDrivenBoats` | `false` | See above. |
+| `pullDrivenVehicles` | `true` | A lead pulls an Automobility car while a player drives it (towing; a car tied to a fence can't drive away). Applied on the driver's client. |
+| `massLeads` | `true` | Leads pull both ends by their masses (Camafy's weights): players feel what they lead, vehicles and ridden horses what they tow, ships what is tied to them. |
 
 **`features`**
 
 | Key | Default |
 |---|---|
 | `leashBoats` | `true` |
+| `leashVehicles` | `true` |
 | `mobToMob` | `true` |
 | `mobChains` | `true` |
 | `shearsSnip` | `true` |
@@ -169,13 +197,14 @@ Forge sends this file to every client that joins.
 | `stripeShade` | `0.7` | Brightness of every other stripe. |
 
 ## Compatibility
-- **Camafy (required, 0.1.7+):** gravity (`compat.gravity.Gravity`), entity size and Pehkui's motion scale (`compat.scale.EntityScale`), Valkyrien Skies (`compat.vs.Ships` / `ShipRef`, never VS classes directly), physics ownership (`physics.PhysicsOwnership`), minigame rules (`minigame.MatchPolicies`), networking (`network.CamafyChannel`), config helpers (`ConfigUtil`, `IdMatcher`), colour parsing, mod detection (`ModPresence`), logging (`LogOnce`).
+- **Camafy (required, 0.1.23+):** impulses for scripted vehicles (`physics.Impulses`), outright holds (`PhysicsOwnership.heldOutrightByOther`), gravity (`compat.gravity.Gravity`), entity size and Pehkui's motion scale (`compat.scale.EntityScale`), Valkyrien Skies (`compat.vs.Ships` / `ShipRef`, never VS classes directly), physics ownership (`physics.PhysicsOwnership`), minigame rules (`minigame.MatchPolicies`), networking (`network.CamafyChannel`), config helpers (`ConfigUtil`, `IdMatcher`), colour parsing, mod detection (`ModPresence`), logging (`LogOnce`).
 - **Gravity Unbound:** leash forces are applied in world axes and converted into each entity's movement frame. The rope sags along the average gravity of its two ends. Collar and hand points follow each entity's render frame.
 - **Valkyrien Skies:** a knot on a ship's fence lives in shipyard coordinates. Every distance, search, pull and rope end is taken to world space first, so a mob tied to a ship's fence is dragged along with the ship. This works with or without Vanilla Backport. The rope does not collide with ship blocks.
   - Knots on ships are found through the level's own entity events. Vanilla's search around a fence can't find them, because Valkyrien Skies turns entity searches in the shipyard into searches around the ship in the world, and a second knot would be made on the same fence.
   - Fence-to-fence ropes on ships pull through Camafy's one ship force hook (`ShipForces.registerHook`), on the physics thread. Unleashed Lead never names a Valkyrien Skies class.
 - **Full Stop:** a rope catching or jerking an entity must not read as a crash. While a lead is taut, Unleashed Lead places a short `G_FORCE` claim on the entity, and on a boat's passengers. It deliberately claims nothing else, so a mob swung into a wall still takes Full Stop's impact damage. It never sets `hasImpulse` and never marks discontinuities. Full Stop replaces fall damage, and it already exempts leashed mobs being lowered.
-- **MKW Mobility / Grapple Unbound / any mod claiming `MOTION`:** such entities can't be leashed. If one is already leashed, the lead never pulls it and never walks it. With Vanilla Backport installed, whatever Vanilla Backport's tick does to their velocity is also undone.
+- **MKW Mobility / Automobility:** cars take a lead; the pull goes through Camafy's `Impulses` (see the physics section). A kart MKW holds outright (a race) can't be leashed.
+- **Grapple Unbound / any other mod claiming `MOTION`:** such entities can't be leashed. If one is already leashed, the lead never pulls it and never walks it. With Vanilla Backport installed, whatever Vanilla Backport's tick does to their velocity is also undone.
 - **Grapple Unbound (formerly GrappleVS):** it no longer has a lead overhaul (removed), so Unleashed Lead is the only lead physics and rope.
 - **Game Start and other minigame hosts:** `MatchPolicies.canHarm` is asked before a player leashes, re-ties or cuts the leads of another player's pet, or of something another player leads.
 - **Pehkui (Virtuoel; bundled in Genesis):** optional and never compiled against. Unleashed Lead reads Pehkui's motion scale through Camafy, and everything else from vanilla (Pehkui scales `getDimensions`, eye height and the box). See the physics section. Tested with Pehkui 3.8.2, the version Genesis 0.7.3 nests.
@@ -191,6 +220,10 @@ Both mods can be installed together. Unleashed Lead declares Vanilla Backport as
 | The leash tick of `PathfinderMob`s and boats | Vanilla Backport (it cancels `PathfinderMob.tickLeash`), with Unleashed Lead's methods plugged into its hooks |
 | Single-lead pull (spring, damper, pendulum) | Unleashed Lead, through Vanilla Backport's `vb$checkElasticInteractions` hook |
 | Quad-lead physics (ghast carrying a boat or horse) | Vanilla Backport's own, handed back to its interface default |
+
+Notes on Vanilla Backport's happy ghast (checked 2026-10-03, harness `ghast_boat` / `ghast_click`, with and without Unleashed Lead): to hang a boat under a ghast, hold the boat's lead and sneak-use the ghast; use it again with an empty hand to ride it, and it turns with you. Standing on its top without riding holds it still and squares its facing (1.21.6). A player sitting in the hanging boat stops the pull (Vanilla Backport never pulls a boat a player drives), so the boat drops. A player sitting in the hanging boat is not carried: vanilla 1.21.6 does the same (the pull runs on the server, which doesn't move a boat a player drives).
+
+**The happy ghast's facing on clients (`VbHappyGhastSyncMixin`, Vanilla Backport only).** 1.20.1's client hands every move packet to its interpolation with the facing the mob has right now, so a packet that only moves the ghast, handled in the same client tick as the one that turned it (any lag spike, or chunk loading right after it appears), dropped the turn; the server counts it as sent and doesn't send it again, so the ghast stayed facing the old way until it turned again and its boat was drawn up to 160 degrees crooked against it (1.21.6 and Vanilla Backport's copy of its sync behave alike). Now a move-only packet keeps the turn still being drawn and a turn-only packet keeps the move (client, `vanillaBackport.ghastKeepTurns`), and the server resends each happy ghast's facing every two seconds (`vanillaBackport.ghastFacingResync`). Harness `ghast_sync`: a turn and a move handed to the client in one tick are kept (without the fix the client stays 90 degrees off); an unridden ghast holding a boat with 300 ms client stalls every 2.5 s: the client's yaw frozen while more than 10 degrees off at most 3 ticks free and 1 tied (24 and 37 without the fixes), more than 10 degrees behind at most 6 and 7 ticks (30 and 47), the boat drawn more than 10 degrees off the server's on 36 and 31 ticks of 200 (100 and 71).
 | Free length / snap distance | Unleashed Lead's config, through `vb$leashElasticDistance` / `vb$leashSnapDistance`. The happy ghast keeps its own values. |
 | Distance, home restriction and walking to a holder on a Valkyrien Skies ship | Unleashed Lead (`vb$leashDistanceTo`, `vb$whenLeashedTo`, `vb$closeRangeLeashBehavior`). Without this, Vanilla Backport snaps every lead tied to a ship's fence at once. |
 | Drawing every lead, single and quad | Unleashed Lead. Vanilla Backport's `LeashFeatureRenderer` is cancelled while rope rendering is on. |

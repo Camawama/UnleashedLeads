@@ -1,6 +1,9 @@
 package net.camacraft.unleashedlead.client;
 
 import net.camacraft.unleashedlead.client.rope.ClientRopes;
+import net.camacraft.unleashedlead.leash.KnotMasses;
+import net.camacraft.unleashedlead.leash.LeashPhysics;
+import net.camacraft.unleashedlead.leash.VehicleLeashes;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -18,7 +21,12 @@ public final class UnleashedLeadClient {
     }
 
     private static void onClientTick(TickEvent.ClientTickEvent event) {
-        if (event.phase == TickEvent.Phase.END) ClientRopes.tick();
+        if (event.phase != TickEvent.Phase.END) return;
+        ClientRopes.tick();
+        KnotMasses.clientTick();
+        VehicleLeashes.clientTick(net.minecraft.client.Minecraft.getInstance().player);
+        // the local player's own ends of leads by mass: held by a car it leads, or its car feeling what it tows
+        LeashPhysics.clientHolderTick(net.minecraft.client.Minecraft.getInstance().player);
     }
 
     private static void onRenderStage(RenderLevelStageEvent event) {
@@ -30,6 +38,7 @@ public final class UnleashedLeadClient {
         if (event.getLevel().isClientSide()) {
             ClientRopes.clear();
             ClientTethers.clear();
+            KnotMasses.clear();
         }
     }
 }

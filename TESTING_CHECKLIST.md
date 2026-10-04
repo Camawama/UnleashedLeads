@@ -57,6 +57,29 @@ Tick each box as you go. Next to anything that looks wrong, write what you saw a
   - Hold a tamed wolf, sneak-use a sheep (the wolf is now tied to the sheep) and make the wolf sit: the sheep is held back about 5 blocks from it and can't wander off.
 - [ ] A leashed horse whose player rider is steering keeps its normal control.
 
+## Automobility vehicles
+- [ ] Use a lead on a parked Automobility car and walk away: the car is dragged and slows you, by its Camafy weight against yours (heavier than you: it gives slowly and you are held about 7 blocks out). `[NEW]`
+- [ ] Hold a pig's lead and a boat's lead, use the car with them (tie them to it), get in and drive off. The pig and the boat are towed behind it and the leads don't snap; the car is slowed by what it tows. `[NEW]`
+- [ ] Lead a chicken, a pig, a cow and an iron golem, walking then sprinting: the chicken barely slows you, the pig and the cow more, the golem holds you at the lead's length until it walks after you. `[NEW]`
+- [ ] Tie a car to a fence (use the fence while holding it), get in and drive away at full throttle. It pulls up about 7 blocks from the fence and stays tied.
+- [ ] Tie a car to a horse (sneak-use the horse while holding the car's lead), sit in the car and let someone ride the horse away. The car follows.
+- [ ] Tie a car to a happy ghast the same way and fly the ghast up a little: the car is dragged along the ground behind it.
+- [ ] Use your own lead on the car again (empty hand): it unties and drops the lead. Shears cut it.
+- [ ] Leave the area with a tied car and come back: still tied. Break the car: the lead drops.
+- [ ] RIAutomobility's vehicles take a lead the same way.
+- [ ] In an MKW race, using a lead on a kart does nothing.
+- [ ] `leashVehicles = false`: cars can't be leashed. `pullDrivenVehicles = false`: a car you drive isn't pulled (it still snaps past 12 blocks).
+
+## Leads by mass and the lead cleat `[NEW]`
+- [ ] Craft lead cleats (four iron nuggets around a string: two). Place one on a floor, a wall and a ceiling: a small iron horn, on the face you clicked. Walk through it: no collision.
+- [ ] Hold a pig on a lead and use a cleat: the pig is tied, the knot sits on the cleat's horn. Leave it a minute: still tied. Break the cleat: the knot goes and the lead drops.
+- [ ] With a lead in hand, use a cleat, then a fence (or another cleat): a fence-to-fence rope runs from the cleat's horn.
+- [ ] Build a 3x3 plank raft on water with a cleat on its deck edge. Tie a car (or a horse) to the cleat and drive (ride) away along the shore: the raft is towed after you, and the car is slower than usual.
+- [ ] Tie a pig to the cleat of a big ship: the pig is held as by a fence. Tie it to the cleat of a one-block raft and pull the pig away with your own lead: the raft is pulled too.
+- [ ] A 5x5 raft and a 2x2 raft afloat, a rope from cleat to cleat; push the big one away: the small one follows, the big one barely slows.
+- [ ] Moor a raft to a fence on a post by a cleat rope and push it away: the rope holds it.
+- [ ] `massLeads = false`: leads behave as before this change (a car on your lead is dragged; a lead to a ship's knot doesn't pull the ship).
+
 ## 4. Boats, rafts and chest boats
 - [ ] Use a lead on an oak boat, a bamboo raft and a chest boat.
   - Each is tied to you, with the rope at the bow, and one lead is used each time.
