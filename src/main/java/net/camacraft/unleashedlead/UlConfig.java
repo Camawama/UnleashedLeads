@@ -58,6 +58,7 @@ public final class UlConfig {
     public static final ForgeConfigSpec.BooleanValue TETHERS;
     public static final ForgeConfigSpec.DoubleValue TETHER_STIFFNESS;
     public static final ForgeConfigSpec.DoubleValue TETHER_DAMPING;
+    public static final ForgeConfigSpec.DoubleValue TETHER_SWAY_DAMPING;
     public static final ForgeConfigSpec.DoubleValue TETHER_BREAKING_STRENGTH;
     public static final ForgeConfigSpec.DoubleValue TETHER_SLACK;
 
@@ -183,6 +184,11 @@ public final class UlConfig {
         TETHER_DAMPING = s.comment("How much a stretched rope resists being stretched faster, as a share of critical",
                         "damping (0 = a bouncy spring, 1 = no bounce at all).")
                 .defineInRange("damping", 0.5, 0.0, 2.0);
+        TETHER_SWAY_DAMPING = s.comment("How fast a taut rope takes the sideways sway out of its two ends moving against each other,",
+                        "per second (the share of that motion lost each second, as the rope's fibres and knots rub).",
+                        "Without it a chain of ships hung from a frozen one swings and jerks for good; at 4 the swing",
+                        "of a chain of six dies down within half a minute, a single ship's within seconds. 0: none.")
+                .defineInRange("swayDamping", 4.0, 0.0, 20.0);
         TETHER_BREAKING_STRENGTH = s.comment("Pull, in newtons, at which a rope on a ship snaps (the lead drops where it broke).",
                         "The default holds a small boat under full engine power and a big ship drifting, and",
                         "snaps when a ship rams away: a 1,000 t ship at about 1.3 m/s, a 100 t ship at about 7,",

@@ -343,16 +343,17 @@ public final class Tethers {
         }
         double stiffness = UlConfig.num(UlConfig.TETHER_STIFFNESS);
         double damping = UlConfig.num(UlConfig.TETHER_DAMPING);
+        double sway = UlConfig.num(UlConfig.TETHER_SWAY_DAMPING);
         Vec3 sa = anchor(level, t.a), sb = anchor(level, t.b);
         if (shipA != null) {
             Vec3 other = shipB != null ? sb : wb;
             ends.add(new TetherPhysics.End(shipA.id(), sa.x, sa.y, sa.z, shipB != null ? shipB.id() : ShipRef.NO_ID,
-                    other.x, other.y, other.z, t.length, stiffness, damping, breaking, t.cell));
+                    other.x, other.y, other.z, t.length, stiffness, damping, sway, breaking, t.cell));
         }
         if (shipB != null) {
             Vec3 other = shipA != null ? sa : wa;
             ends.add(new TetherPhysics.End(shipB.id(), sb.x, sb.y, sb.z, shipA != null ? shipA.id() : ShipRef.NO_ID,
-                    other.x, other.y, other.z, t.length, stiffness, damping, breaking, t.cell));
+                    other.x, other.y, other.z, t.length, stiffness, damping, sway, breaking, t.cell));
         }
         return Fate.KEEP;
     }

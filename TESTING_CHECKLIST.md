@@ -200,3 +200,6 @@ Tick each box as you go. Next to anything that looks wrong, write what you saw a
 - [ ] A ship moored in space doesn't sink or pull: the rope stays slack until you push the ship past its length.
 - [ ] Ad Astra Moon: ropes settle into the same curve as on Earth, just more slowly. A mob hanging from a knot swings slowly.
 - [ ] A Gravity Unbound zero-strength plate: a mob in its field floats on its lead. A rope is pulled by the average gravity at its two ends, so a lead from a player outside the field to a mob inside still settles into its hanging curve, only half as fast; a rope between two mobs both inside floats.
+
+## 10. Ropes between ships settle (2026-10-10)
+- [ ] Tie five or six small ships into a row with cleat-to-cleat ropes, lift the first with VMod's physgun and freeze it (right click) in the air: the rest hang from it, swing a little and come to rest within a few seconds instead of jerking about for good. Server config `tethers.swayDamping` (4.0) sets how fast; 0 brings the old behaviour back.

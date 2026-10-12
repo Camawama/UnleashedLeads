@@ -34,6 +34,12 @@ import java.util.concurrent.atomic.AtomicLong;
  *   (less than the ship's when the knot is off the centre of mass and the pull also turns it).</li>
  *   <li>Both are capped so no rope rings faster than {@link #OMEGA_MAX}, which keeps the explicit
  *   spring stable at VS's 60 Hz step however light the ship.</li>
+ *   <li>Sway: while taut, the sideways motion of one knot against the other is damped too, at
+ *   {@code tethers.swayDamping} per second of the mass that motion meets at the knots, equal and
+ *   opposite on the two ends. The spring and its damper act only along the rope, so before this a
+ *   chain of ships hung from a frozen one swung and snatched at each other for good (the owner:
+ *   "they all start moving sporadically and the movement of the lead never settle"); air drag on
+ *   a ship is far too weak to settle it.</li>
  * </ul>
  * When the tension passes the breaking strength the rope stops pulling at once and the server
  * snaps it on its next tick ({@link Tethers}).
@@ -131,7 +137,7 @@ public final class TetherPhysics {
      * other end is a world point ({@code otherShip == NO_ID}) or a knot in another ship's space.
      */
     record End(long ship, double sx, double sy, double sz, long otherShip, double ox, double oy, double oz,
-               double length, double stiffness, double damping, double breaking, Cell cell) {}
+               double length, double stiffness, double damping, double sway, double breaking, Cell cell) {}
 
     private static final End[] NONE = new End[0];
     /** Server thread: each level's ends from its last tick. */
@@ -236,7 +242,38 @@ public final class TetherPhysics {
             cell.breakRope(); // no more pull from here on; the server snaps it next tick
             return;
         }
-        if (tension > 0.0) body.applyForceAtShipPos(n.mul(tension), new Vector3d(e.sx(), e.sy(), e.sz()));
+        Vector3d force = new Vector3d(n).mul(tension);
+        if (e.sway() > 0.0) addSway(force, body, pa, va, other, otherMoves, pb, n, e.sway());
+        if (force.lengthSquared() > 0.0) body.applyForceAtShipPos(force, new Vector3d(e.sx(), e.sy(), e.sz()));
+    }
+
+    /**
+     * Adds to {@code force} the sway damping of a taut rope: the other knot's velocity relative to this one, the
+     * part across the rope, times {@code rate} and the mass that sideways motion meets at the two knots (the pair's
+     * reduced point mass, as for the pull). The other ship's hook adds the opposite with the same numbers, so the
+     * pair's momentum is kept and only their swing against each other is taken out. Capped like the rope's own
+     * damper, so it stays stable at VS's step however light the ship.
+     */
+    private static void addSway(Vector3d force, PhysBody body, Vector3d pa, Vector3d va,
+                                PhysBody other, boolean otherMoves, Vector3d pb, Vector3d n, double rate) {
+        Vector3d vb = otherMoves ? pointVelocity(other, pb) : new Vector3d();
+        Vector3d across = vb.sub(va);
+        across.sub(new Vector3d(n).mul(across.dot(n)));
+        double speed = across.length();
+        if (speed < 1.0E-6) return;
+        Vector3d dir = new Vector3d(across).div(speed);
+        double m = body.mass();
+        double pointMass = pointMass(body, pa, dir, m);
+        if (otherMoves) {
+            double mo = other.mass();
+            if (mo > 0.0) {
+                double po = pointMass(other, pb, dir, mo);
+                pointMass = pointMass * po / (pointMass + po);
+            }
+        }
+        if (!(pointMass > 0.0)) return;
+        double c = Math.min(rate, DAMP_MAX) * pointMass;
+        force.add(across.mul(c));
     }
 
     /** Velocity of a point fixed to the ship: v + ω × (p − centre of mass). */
