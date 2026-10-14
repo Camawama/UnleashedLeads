@@ -26,7 +26,8 @@ import org.slf4j.Logger;
  * <ul>
  *   <li>{@code rope}: the rope solver (plain Java, shared by the renderer and the tests).</li>
  *   <li>{@code leash}: the leash model ({@link net.camacraft.unleashedlead.leash.Leashes}),
- *   its physics, the interaction rules and the event wiring.</li>
+ *   its physics, the interaction rules and the event wiring; upgraded leads
+ *   ({@link net.camacraft.unleashedlead.leash.LeadTier}, items in {@link UlItems}).</li>
  *   <li>{@code tether}: leads tied from fence to fence, and their pull on Valkyrien Skies ships.</li>
  *   <li>{@code compat}: Vanilla Backport, which owns the leash data model when installed.</li>
  *   <li>{@code client}: rope simulation and drawing.</li>
@@ -46,6 +47,7 @@ public final class UnleashedLead {
 
         UlSounds.REGISTER.register(modBus);
         UlBlocks.register(modBus);
+        UlItems.register(modBus);
         CraftingHelper.register(ConfigCondition.Serializer.INSTANCE);
         UlNetwork.init();
         LeashEvents.register();

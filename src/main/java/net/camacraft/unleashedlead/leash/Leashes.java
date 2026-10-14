@@ -67,7 +67,10 @@ public final class Leashes {
         }
     }
 
-    /** Unties {@code entity} (server side), dropping a lead item at it if {@code dropItem}. */
+    /**
+     * Unties {@code entity} (server side), dropping a lead item at it if {@code dropItem}: the lead's own item
+     * ({@link LeadTier}), which takes its tier with it. Without an item the lead is gone, tier and all.
+     */
     public static void detach(Entity entity, boolean dropItem) {
         if (entity.level().isClientSide) return;
         if (entity instanceof Mob mob) {
@@ -78,6 +81,7 @@ public final class Leashes {
             BoatLeashes.detach(entity, leash, dropItem);
             VehicleLeashes.changed(entity);
         }
+        if (!dropItem) LeadTiers.clear(entity);
     }
 
     /**

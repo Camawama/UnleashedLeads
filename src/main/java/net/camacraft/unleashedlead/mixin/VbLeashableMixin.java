@@ -5,6 +5,7 @@ import net.camacraft.unleashedlead.UlConfig;
 import net.camacraft.unleashedlead.UnleashedLead;
 import net.camacraft.unleashedlead.compat.VanillaBackport;
 import net.camacraft.unleashedlead.leash.LeadScale;
+import net.camacraft.unleashedlead.leash.LeadTiers;
 import net.camacraft.unleashedlead.leash.LeashChains;
 import net.camacraft.unleashedlead.leash.LeashGeometry;
 import net.camacraft.unleashedlead.leash.LeashPhysics;
@@ -37,8 +38,9 @@ import java.lang.invoke.MethodType;
  *   and elastic distances, whether a lead can be attached) applies to a lead between two ends
  *   shrunk to 1/16 at 1/16, exactly as this mod's own physics does. Unchanged for normal leads.</li>
  *   <li>{@code vb$leashSnapDistance} / {@code vb$leashElasticDistance}: this mod's config (same
- *   defaults, 12 and 5 + 1), so one setting governs both mods. Its happy ghast keeps its own
- *   10 / 16, declared on the ghast's class.</li>
+ *   defaults, 12 and 5 + 1), so one setting governs both mods; an upgraded lead's snap distance is
+ *   its break distance ({@code LeadTiers.vanillaBackportSnap}). Its happy ghast keeps its own
+ *   10 / 16, declared on the ghast's class ({@code VbHappyGhastLeadTierMixin} upgrades that one).</li>
  *   <li>{@code vb$whenLeashedTo}: the home restriction around the holder's world position.</li>
  *   <li>{@code vb$checkElasticInteractions}: a single lead pulls with Unleashed Lead's physics
  *   (the Bedrock pendulum; respects other mods' motion claims; world space), so a lead behaves
@@ -75,7 +77,8 @@ public abstract class VbLeashableMixin {
     }
 
     public double vb$leashSnapDistance() {
-        return UlConfig.num(UlConfig.SNAP_DISTANCE);
+        // an upgraded lead snaps later (leash.LeadTiers), in Vanilla Backport's own leash tick too
+        return LeadTiers.vanillaBackportSnap((Entity) (Object) this, UlConfig.num(UlConfig.SNAP_DISTANCE));
     }
 
     public double vb$leashElasticDistance() {
@@ -111,6 +114,11 @@ public abstract class VbLeashableMixin {
     public void vb$closeRangeLeashBehavior(Entity holder) {
         Entity self = (Entity) (Object) this;
         if (LeashChains.holderFollows(self, holder)) return; // a chain dragged from this end: the holder comes here
+        if (UlConfig.num(UlConfig.LED_HURRY) > 1.0) {
+            // at the holder's pace (ledHurry): Vanilla Backport's own walks at vanilla's, and a led cow fell behind
+            LeashTicker.followHolder(self, holder);
+            return;
+        }
         if (unleashedlead$onShip(holder) || LeadScale.reach(self, holder) < 1.0) {
             LeashTicker.walkToHolder(self, holder);
             return;

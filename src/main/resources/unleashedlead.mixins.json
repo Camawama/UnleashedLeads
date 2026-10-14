@@ -8,15 +8,20 @@
   "mixins": [
     "BoatMixin",
     "compat.AutomobileLeashMixin",
+    "EntityDataAccessor",
+    "EntityLeadTierMixin",
     "FenceBlockMixin",
     "HangingEntityMixin",
     "LeadItemMixin",
     "LeashKnotMixin",
+    "MobGoalsAccessor",
     "MobMixin",
+    "PathfinderMobInvoker",
     "PathfinderMobMixin",
     "ShearsDispenseItemBehaviorMixin",
     "VbLeashableMixin",
-    "VbHappyGhastSyncMixin"
+    "VbHappyGhastSyncMixin",
+    "VbHappyGhastLeadTierMixin"
   ],
   "client": [
     "client.MobRendererMixin",

@@ -69,8 +69,11 @@ A lead with something heavy on it pulls both ends, each by the other's share of 
 
 - **Which leads:** every lead a player holds, every lead a vehicle or a horse a player rides holds, and every lead to a knot on a Valkyrien Skies ship (the ship is pulled at the knot, through Camafy's ship forces, so a lead tied off-centre turns it too). A knot in the world never moves, and chains of mobs keep their own rules (two free mobs already share by mass).
 - **Masses:** Camafy's weights, nothing else: an entity with its riders and everything they carry (`Weights.massWithPassengersKg`), and a ship's physical mass (Valkyrien Skies' block masses, scaled with the ship). A car in an MKW race, a sitting pet, a mob with no AI, something riding something else, or an entity another mod moves counts as immovable.
-- **What you feel:** you move yourself, so your share is applied on your own client, after your step, and shapes the next one. Walking and sprinting with a lead, against 4.3 and 5.6 blocks a second free: a chicken (3 kg) 4.3 and 5.4, it follows at once; a pig (150 kg) 3.1 and 2.0; a cow (650 kg) 2.2 and 0.6; an iron golem (3000 kg) holds you at the lead's length when you sprint (0.24), and you only make headway as fast as it walks after you. The heavier end gives slowly and the lead stays taut.
-- **The tow rope:** within 1.5 blocks of its snap distance a lead with mass on both ends stops its ends parting altogether, still shared by mass, as a rope at full stretch would. A car drags a pig behind it rather than snapping the lead on it; only a jerk that takes the ends past the snap distance in a single tick still snaps it.
+- **What you feel:** you move yourself, so your share is applied on your own client, after your step, and shapes the next one. A parked car, a boat, a mob without AI or a sitting pet is dragged dead, its whole weight on the lead: a car holds you at the lead's length.
+- **Tamed animals walk along, untamed ones are wrangled** (2026-10-13). A tamed animal (a pet, a tamed horse, donkey, mule, llama or camel, or anything in `ledByNature`) walks after its holder at the holder's pace, up to `ledHurry` (2.5) times its own leash pace, keeps walking while the lead is taut (Vanilla Backport stopped it there), and puts only `ledWeight` (0.3) of its weight on a taut lead; a tamed horse keeps up with a sprinting player whatever its own speed and stops eating or rearing when its holder walks off. An untamed animal walks at vanilla's pace, is dragged on a taut lead and puts `untamedLedWeight` (all) of its weight on it: wrangling a cow on a plain lead is work. Every tier divides the weight by its strength squared (a cow: 650 kg plain, 289 iron, 104 diamond, 41 netherite). Towed by a vehicle, an untamed animal runs along (`untamedTowedHurry`, 2.0) but still weighs all of itself on the car on a plain lead.
+- **Creative holders:** a player in creative mode or spectating is never pulled by what they lead (`creativeHoldersHold`); it just follows.
+- **The tow rope:** within 1.5 blocks of its snap distance a lead with mass on both ends stops its ends parting altogether, still shared by mass, as a rope at full stretch would. A car drags a pig behind it rather than snapping the lead on it; only a jerk that takes the ends past the snap distance in a single tick still snaps it. It changes how fast the ends part by at most 2 blocks a tick (40 m/s) in one tick.
+- **Paused:** the client's tick goes on while the game is paused, but nothing moves; the pulls a client gives (to the car it drives, to its player) act at most once per tick of what they move, and not at all while paused. Before 2026-10-13 a car towing a cow on a taut lead, paused for a while, was flung hundreds of blocks when the game went on.
 - **Where it is applied:** each end on the side that moves it. Mobs, parked cars and ships on the server; a player and the car a player drives on that player's own client. The server sends the driver the mass of the ship their car's lead is tied to (clients don't otherwise know ship masses).
 - **A ride a player steers** (a horse) isn't pulled by its lead, as before, but what it is tied to is: a horse ridden away from a raft tied to it drags the raft by the raft's share, and snaps the lead if it gets too far ahead.
 
@@ -80,6 +83,14 @@ A small iron cleat (`unleashedlead:lead_cleat`, crafted from four iron nuggets a
 - **Ties like a fence:** use it with mobs on your lead to tie them, with a lead in hand to start a fence-to-fence rope or to tie one you carry, or empty-handed to take its leads back. A lead used on it while sneaking ties too. Its knot sits on the cleat's horn, and a rope pulls there.
 - **Snags nothing:** it has no collision at all. On a Valkyrien Skies ship it takes the one cell any block takes, weighs 1 kg, and nothing bumps into it. It isn't a fence: fences don't connect to it and mobs don't walk around it.
 - **Goes with its block:** breaking it (or the block it hangs on) takes its knot and drops the leads, as a fence would.
+
+### Upgraded leads
+Made at the smithing table with the template slot left empty: lead + iron ingot = **Iron Lead**, Iron Lead + diamond = **Diamond Lead**, Diamond Lead + netherite ingot = **Netherite Lead** (it survives fire and lava, like netherite gear). In the Tools tab after the lead.
+
+- **A lead in every way:** it ties mobs, boats, cars and the happy ghast, ties to fences and cleats, and makes fence-to-fence ropes. Same free length, same pull, same tow length.
+- **Harder to break:** it stretches its strength times as far past its free length before it snaps: a plain lead snaps at 12 blocks (7 past its 5 free), an iron one at 15.5, diamond at 22.5, netherite at 33 (`upgradedLeads` below). A fence-to-fence rope of one on a ship holds that many times `tethers.breakingStrength`; a carried rope snaps that much later too (the longest rope that can be tied stays 12 blocks).
+- **It stays what it is:** tied, moved to a fence or another mob, taken back into your hand, passed along a chain of mobs, saved with the world, drawn in its own colour, and dropped as itself when it is untied, cut, snaps or its knot goes.
+- With Vanilla Backport its own leash tick snaps the leads it runs (pathfinding mobs, boats, its happy ghast) at the same distances.
 
 ### Fence-to-fence ropes and mooring ships
 Vanilla only ties mobs to fences. Unleashed Lead also ties a lead between two fences (or lead cleats, or a fence and a cleat).
@@ -147,6 +158,12 @@ Forge sends this file to every client that joins.
 | `pullPlayerDrivenBoats` | `false` | See above. |
 | `pullDrivenVehicles` | `true` | A lead pulls an Automobility car while a player drives it (towing; a car tied to a fence can't drive away). Applied on the driver's client. |
 | `massLeads` | `true` | Leads pull both ends by their masses (Camafy's weights): players feel what they lead, vehicles and ridden horses what they tow, ships what is tied to them. |
+| `ledWeight` | `0.3` | Share of its weight a tamed led animal walking after its holder puts against a taut lead (by mass); divided by an upgraded lead's strength squared. |
+| `untamedLedWeight` | `1.0` | The same for an untamed one (all of it on a plain lead). |
+| `ledHurry` | `2.5` | Tamed led animals walk at their holder's pace, up to this many times their own leash pace, also on a taut lead; tamed horses keep up with a sprint. 1 = vanilla's pace. |
+| `untamedTowedHurry` | `2.0` | An untamed animal towed by a vehicle runs along at up to this many times its leash pace instead of being dragged. 1 = dragged. |
+| `ledByNature` | allay, camel, happy ghast | Entities led like tamed animals even untamed (ids, #tags, wildcards, /regex/). |
+| `creativeHoldersHold` | `true` | A creative or spectating player is never pulled by what they lead. |
 
 **`features`**
 
@@ -177,6 +194,14 @@ Forge sends this file to every client that joins.
 | `breakingStrength` | `1000000.0` | Pull, in newtons, at which a rope snaps. |
 | `slack` | `0.5` | Blocks of rope added to the distance between the fences when a rope is tied. |
 
+**`upgradedLeads`**
+
+| Key | Default | What it does |
+|---|---|---|
+| `ironStrength` | `1.5` | How much stronger an Iron Lead is than a plain one: how far past its free length it stretches before it snaps (5 + 7 x 1.5 = 15.5 blocks), and how hard a rope of it on a ship may pull (times `tethers.breakingStrength`). |
+| `diamondStrength` | `2.5` | The same for a Diamond Lead (22.5 blocks). |
+| `netheriteStrength` | `4.0` | The same for a Netherite Lead (33 blocks). |
+
 ### `config/unleashedlead-client.toml`
 **`rope`**
 
@@ -195,6 +220,7 @@ Forge sends this file to every client that joins.
 | `maxSimulated` | `64` | Most ropes simulated at once. |
 | `color` | `#7F664C` | Rope colour. |
 | `stripeShade` | `0.7` | Brightness of every other stripe. |
+| `ironColor` / `diamondColor` / `netheriteColor` | `#A9ADB1` / `#3FCFC0` / `#4A4043` | Rope colour of each upgraded lead. |
 
 ## Compatibility
 - **Camafy (required, 0.1.23+):** impulses for scripted vehicles (`physics.Impulses`), outright holds (`PhysicsOwnership.heldOutrightByOther`), gravity (`compat.gravity.Gravity`), entity size and Pehkui's motion scale (`compat.scale.EntityScale`), Valkyrien Skies (`compat.vs.Ships` / `ShipRef`, never VS classes directly), physics ownership (`physics.PhysicsOwnership`), minigame rules (`minigame.MatchPolicies`), networking (`network.CamafyChannel`), config helpers (`ConfigUtil`, `IdMatcher`), colour parsing, mod detection (`ModPresence`), logging (`LogOnce`).

@@ -203,3 +203,18 @@ Tick each box as you go. Next to anything that looks wrong, write what you saw a
 
 ## 10. Ropes between ships settle (2026-10-10)
 - [ ] Tie five or six small ships into a row with cleat-to-cleat ropes, lift the first with VMod's physgun and freeze it (right click) in the air: the rest hang from it, swing a little and come to rest within a few seconds instead of jerking about for good. Server config `tethers.swayDamping` (4.0) sets how fast; 0 brings the old behaviour back.
+
+## 11. Upgraded leads (2026-10-12)
+- [ ] Smithing table, template slot empty: a lead + an iron ingot shows an Iron Lead in the result slot; take it. Iron Lead + diamond gives a Diamond Lead, Diamond Lead + netherite ingot a Netherite Lead. Each is in the Tools tab after the lead, with its own name and colour. With a template in its slot, nothing.
+- [ ] Tie a pig to a fence with each tier and look at the ropes by day: brown, grey, cyan, dark. Tie a fence-to-fence rope with each: the same colours. Rejoin the world: same colours.
+- [ ] Hold a pig on a plain lead and fly away with creative flight: it snaps at about 12 blocks. An iron lead holds to about 15.5, diamond 22.5, netherite 33 (the pig is dragged after you meanwhile).
+- [ ] Untie, shear or snap an upgraded lead, break its fence, or take down its knot: the lead that drops is the upgraded one, never a plain lead.
+- [ ] Throw a Netherite Lead into lava: it floats, like netherite gear.
+- [ ] A happy ghast (Vanilla Backport) and a boat on a diamond lead hold further than on a plain one.
+
+## 12. Led animals and the pause (2026-10-13)
+- [ ] Drive a car with a cow on a lead until the rope is taut, press Esc (or tab out) and wait half a minute, then go on: the car stays put or rolls on gently, it is never flung.
+- [ ] Hold an untamed cow on a plain lead and walk, then sprint: it is hard work, it drags behind and holds you back. With an iron, diamond, then netherite lead it gets easier each time. A tamed horse (or a tamed wolf) walks along at your pace.
+- [ ] In creative mode, flying, hold a cow on a lead: however it pulls, you aren't moved; it follows you.
+- [ ] Lead a tamed horse and sprint: it trots after you; while it grazes, walk off and it stops eating and comes.
+- [ ] Tie four cows to a car and drive off: they trot after it, facing the car, and none of the leads snaps at a moderate speed.

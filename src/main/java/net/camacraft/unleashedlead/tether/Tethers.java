@@ -5,6 +5,8 @@ import net.camacraft.camafy.compat.vs.Ships;
 import net.camacraft.camafy.minigame.MatchPolicies;
 import net.camacraft.unleashedlead.UlConfig;
 import net.camacraft.unleashedlead.UlSounds;
+import net.camacraft.unleashedlead.leash.LeadTier;
+import net.camacraft.unleashedlead.leash.LeadTiers;
 import net.camacraft.unleashedlead.leash.LeashGeometry;
 import net.camacraft.unleashedlead.network.TetherSyncMessage;
 import net.camacraft.unleashedlead.network.UlNetwork;
@@ -20,7 +22,6 @@ import net.minecraft.world.entity.decoration.LeashFenceKnotEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.phys.Vec3;
@@ -43,7 +44,9 @@ import java.util.Set;
  *
  * <p><b>What they do.</b> Between two fences in the world a rope just hangs. When either end is
  * on a Valkyrien Skies ship it holds the ship back ({@link TetherPhysics}) and snaps, dropping
- * the lead where it broke, when its tension passes {@code tethers.breakingStrength}.
+ * the lead where it broke, when its tension passes {@code tethers.breakingStrength} (times an
+ * upgraded lead's strength, {@link LeadTier}: a rope keeps the tier of the lead it was tied with,
+ * and drops as that lead).
  *
  * <p><b>The knot rules still apply.</b> Using a knot with nothing to tie takes its ropes into your
  * hand (the other ends stay tied), shears cut them, a knot that is broken or loses its fence drops
@@ -77,9 +80,19 @@ public final class Tethers {
         return UlConfig.num(UlConfig.SNAP_DISTANCE);
     }
 
-    /** How far past its length a rope may be stretched while nothing pulls on it. */
-    static double looseStretch() {
-        return Math.max(1.0, UlConfig.num(UlConfig.SNAP_DISTANCE) - UlConfig.num(UlConfig.FREE_LENGTH));
+    /** How far past its length a rope of {@code tier} may be stretched while nothing pulls on it. */
+    static double looseStretch(LeadTier tier) {
+        return Math.max(1.0, UlConfig.num(UlConfig.SNAP_DISTANCE) - UlConfig.num(UlConfig.FREE_LENGTH)) * tier.strength();
+    }
+
+    /** How far a carried rope of {@code tier} stretches from its fence before it snaps: a lead's break distance. */
+    public static double carriedBreak(LeadTier tier) {
+        return LeadTiers.breakDistance(UlConfig.num(UlConfig.FREE_LENGTH), reach(), tier.strength());
+    }
+
+    /** The pull at which a rope of {@code tier} on a ship breaks, newtons. */
+    public static double breakingStrength(LeadTier tier) {
+        return UlConfig.num(UlConfig.TETHER_BREAKING_STRENGTH) * tier.strength();
     }
 
     // ------------------------------------------------------------------ geometry
@@ -128,7 +141,8 @@ public final class Tethers {
     public static boolean start(ServerLevel level, BlockPos pos, Player player, InteractionHand hand) {
         if (!enabled() || player.isSpectator()) return false;
         ItemStack stack = player.getItemInHand(hand);
-        if (!stack.is(Items.LEAD) || !UlBlocks.isAnchor(level.getBlockState(pos))) return false;
+        LeadTier lead = LeadTier.of(stack);
+        if (lead == null || !UlBlocks.isAnchor(level.getBlockState(pos))) return false;
         if (!MatchPolicies.mayAlter(level, pos, player)) return false;
         TetherData data = TetherData.get(level);
         int onFence = 0;
@@ -140,6 +154,7 @@ public final class Tethers {
         LeashFenceKnotEntity knot = Knots.getOrCreate(level, pos);
         knot.playPlacementSound();
         Tether t = new Tether(pos);
+        t.tier = lead;
         t.carrier = player.getUUID();
         t.carrierEntity = player;
         t.knotA = knot;
@@ -168,7 +183,7 @@ public final class Tethers {
             if (!player.getUUID().equals(t.carrier)) continue;
             if (t.a.equals(pos)) {
                 it.remove();
-                if (!player.getAbilities().instabuild) dropLead(level, here);
+                if (!player.getAbilities().instabuild) dropLead(level, here, t.tier);
                 untied++;
                 resync(level, t);
                 continue;
@@ -242,7 +257,7 @@ public final class Tethers {
             Tether t = it.next();
             if (!t.touches(pos)) continue;
             it.remove();
-            dropLead(level, at);
+            dropLead(level, at, t.tier);
             resync(level, t);
             cut++;
         }
@@ -259,7 +274,7 @@ public final class Tethers {
             Tether t = it.next();
             if (!player.getUUID().equals(t.carrier)) continue;
             it.remove();
-            dropLead(level, t.knotA != null ? worldAnchor(level, t.a) : player.position());
+            dropLead(level, t.knotA != null ? worldAnchor(level, t.a) : player.position(), t.tier);
             resync(level, t);
             broken++;
         }
@@ -296,12 +311,12 @@ public final class Tethers {
     private static Fate upkeep(ServerLevel level, Tether t, boolean physics, List<TetherPhysics.End> ends) {
         // end A: always a fence
         if (t.knotA != null && t.knotA.isRemoved()) {
-            if (destroyed(t.knotA)) return breakAt(level, worldAnchor(level, t.a), false);
+            if (destroyed(t.knotA)) return breakAt(level, t, worldAnchor(level, t.a), false);
             t.knotA = null;
         }
         if (t.knotA == null) {
             Presence p = present(level, t.a);
-            if (p == Presence.GONE) return breakAt(level, worldAnchor(level, t.a), false);
+            if (p == Presence.GONE) return breakAt(level, t, worldAnchor(level, t.a), false);
             if (p == Presence.HERE) t.knotA = Knots.getOrCreate(level, t.a);
         }
 
@@ -311,12 +326,12 @@ public final class Tethers {
         // end B: a fence too
         if (t.b == null) return Fate.GONE;
         if (t.knotB != null && t.knotB.isRemoved()) {
-            if (destroyed(t.knotB)) return breakAt(level, worldAnchor(level, t.b), false);
+            if (destroyed(t.knotB)) return breakAt(level, t, worldAnchor(level, t.b), false);
             t.knotB = null;
         }
         if (t.knotB == null) {
             Presence p = present(level, t.b);
-            if (p == Presence.GONE) return breakAt(level, worldAnchor(level, t.b), false);
+            if (p == Presence.GONE) return breakAt(level, t, worldAnchor(level, t.b), false);
             if (p == Presence.HERE) t.knotB = Knots.getOrCreate(level, t.b);
         }
         if (t.knotA == null || t.knotB == null) {
@@ -334,11 +349,11 @@ public final class Tethers {
         if (shipA != null && shipB != null && shipA.id() == shipB.id()) return Fate.KEEP; // both on one ship
 
         Vec3 wa = worldAnchor(level, t.a), wb = worldAnchor(level, t.b);
-        double breaking = UlConfig.num(UlConfig.TETHER_BREAKING_STRENGTH);
+        double breaking = breakingStrength(t.tier);
         double peak = t.cell.takePeak();
-        if (t.cell.broken() || peak > breaking) return breakAt(level, wa.add(wb).scale(0.5), true);
+        if (t.cell.broken() || peak > breaking) return breakAt(level, t, wa.add(wb).scale(0.5), true);
         if (!physics) {
-            if (wa.distanceTo(wb) > t.length + looseStretch()) return breakAt(level, wa.add(wb).scale(0.5), true);
+            if (wa.distanceTo(wb) > t.length + looseStretch(t.tier)) return breakAt(level, t, wa.add(wb).scale(0.5), true);
             return Fate.KEEP;
         }
         double stiffness = UlConfig.num(UlConfig.TETHER_STIFFNESS);
@@ -366,20 +381,20 @@ public final class Tethers {
         Vec3 at = worldAnchor(level, t.a);
         if (p == null) {
             if (++t.waitTicks <= CARRIER_PATIENCE) return Fate.KEEP;
-            return breakAt(level, at, false);
+            return breakAt(level, t, at, false);
         }
         t.waitTicks = 0;
-        if (!p.isAlive() || p.isSpectator() || p.level() != level) return breakAt(level, at, false);
-        if (LeashGeometry.centre(p).distanceTo(at) > reach()) {
+        if (!p.isAlive() || p.isSpectator() || p.level() != level) return breakAt(level, t, at, false);
+        if (LeashGeometry.centre(p).distanceTo(at) > carriedBreak(t.tier)) {
             UlSounds.play(level, p.position(), UlSounds.LEAD_BREAK, p); // snapped: heard at the holder, like a lead
-            return breakAt(level, at, false);
+            return breakAt(level, t, at, false);
         }
         return Fate.KEEP;
     }
 
     /** The rope is gone: its lead drops at {@code where}; {@code snapped} also plays the snap there. */
-    private static Fate breakAt(ServerLevel level, Vec3 where, boolean snapped) {
-        dropLead(level, where);
+    private static Fate breakAt(ServerLevel level, Tether t, Vec3 where, boolean snapped) {
+        dropLead(level, where, t.tier);
         if (snapped) UlSounds.play(level, where, UlSounds.LEAD_BREAK, null);
         return Fate.GONE;
     }
@@ -406,8 +421,8 @@ public final class Tethers {
         return Ships.inShipyard(level, pos) ? Ships.managing(level, pos) : null;
     }
 
-    static void dropLead(ServerLevel level, Vec3 at) {
-        ItemEntity lead = new ItemEntity(level, at.x, at.y, at.z, new ItemStack(Items.LEAD));
+    static void dropLead(ServerLevel level, Vec3 at, LeadTier tier) {
+        ItemEntity lead = new ItemEntity(level, at.x, at.y, at.z, new ItemStack(tier.item()));
         lead.setDefaultPickUpDelay();
         level.addFreshEntity(lead);
     }
@@ -471,6 +486,7 @@ public final class Tethers {
         int n = touching.size();
         int[] ids = new int[n], ends = new int[n], others = new int[n];
         float[] lengths = new float[n];
+        byte[] tiers = new byte[n];
         for (int i = 0; i < n; i++) {
             Tether t = touching.get(i);
             ids[i] = t.id;
@@ -478,8 +494,9 @@ public final class Tethers {
             Entity other = t.carrier != null ? t.carrierEntity : t.knotB;
             others[i] = other == null ? 0 : other.getId();
             lengths[i] = (float) t.length;
+            tiers[i] = (byte) t.tier.id;
         }
-        return new TetherSyncMessage(knot.getId(), ids, ends, others, lengths);
+        return new TetherSyncMessage(knot.getId(), ids, ends, others, lengths, tiers);
     }
 
     public static void clear() {

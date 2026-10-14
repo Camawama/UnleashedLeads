@@ -7,6 +7,7 @@ import net.camacraft.camafy.physics.PhysicsOwnership;
 import net.camacraft.unleashedlead.leash.LeashChains;
 import net.camacraft.unleashedlead.leash.LeashGeometry;
 import net.camacraft.unleashedlead.leash.LeashPhysics;
+import net.camacraft.unleashedlead.leash.LeashTicker;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
@@ -87,11 +88,14 @@ public abstract class PathfinderMobMixin extends Mob {
                 && !PhysicsOwnership.claimedByOther(this, PhysicsAspect.MOTION, LeashPhysics.OWNER)
                 && !LeashChains.holderFollows(this, holder)) {
             this.goalSelector.enableControlFlag(Goal.Flag.MOVE);
-            if (this.tickCount % 5 == 0 || this.getNavigation().isDone()) {
-                Vec3 toward = holderCentre.subtract(LeashGeometry.centre(this)).normalize()
-                        .scale(Math.max(tick.distance() - stop, 0.0));
-                this.getNavigation().moveTo(this.getX() + toward.x, this.getY() + toward.y, this.getZ() + toward.z,
-                        this.followLeashSpeed());
+            // at the holder's pace (ledHurry), not vanilla's: a led cow fell 1.3 m/s behind a walking player
+            double pace = LeashTicker.paceFor((PathfinderMob) (Object) this, holder, tick.distance(), stop, this.followLeashSpeed());
+            if (this.tickCount % LeashTicker.WALK_RENEW_TICKS == 0 || this.getNavigation().isDone()) {
+                // to where the holder will be at the next renewal: a mob keeping a moving holder's pace spun round otherwise
+                Vec3 toward = LeashTicker.walkStep(holder, LeashGeometry.centre(this), holderCentre, tick.distance(), stop);
+                this.getNavigation().moveTo(this.getX() + toward.x, this.getY() + toward.y, this.getZ() + toward.z, pace);
+            } else {
+                this.getNavigation().setSpeedModifier(pace);
             }
         }
     }

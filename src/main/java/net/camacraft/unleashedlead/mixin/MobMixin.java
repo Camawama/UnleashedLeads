@@ -2,6 +2,7 @@ package net.camacraft.unleashedlead.mixin;
 
 import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
 import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
+import net.camacraft.unleashedlead.leash.LeadTiers;
 import net.camacraft.unleashedlead.leash.LeashTicker;
 import net.camacraft.unleashedlead.tether.Knots;
 import net.minecraft.core.BlockPos;
@@ -36,6 +37,8 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  *   and coming back: it waits for the ship as a saved lead instead of dropping, and is tied back
  *   once the ship is loaded (see {@link Knots#presence}). Vanilla Backport's leash tick for
  *   pathfinding mobs runs vanilla's {@code Mob.tickLeash} first, so this applies with it too.</li>
+ *   <li>a lead taken off with no item (creative, a dimension change) takes its upgrade tier with it
+ *   ({@code leash.LeadTiers}); one that drops as an item takes it along that way.</li>
  * </ul>
  */
 @Mixin(Mob.class)
@@ -99,6 +102,12 @@ public abstract class MobMixin {
             self.spawnAtLocation(Items.LEAD);
             this.leashInfoTag = null;
         }
+    }
+
+    @Inject(method = "dropLeash", at = @At("HEAD"))
+    private void unleashedlead$forgetLeadTier(boolean broadcast, boolean dropItem, CallbackInfo ci) {
+        Mob self = (Mob) (Object) this;
+        if (!dropItem && this.leashHolder != null && !self.level().isClientSide && !LeadTiers.keeping()) LeadTiers.clear(self);
     }
 
     /**

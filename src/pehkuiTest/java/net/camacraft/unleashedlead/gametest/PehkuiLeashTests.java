@@ -380,7 +380,16 @@ public class PehkuiLeashTests {
         resize(pulled, TINY);
         pulled.setLeashedTo(puller, true);
         pulled.setDeltaMovement(Vec3.ZERO);
-        LeashPhysics.Tick step = LeashPhysics.tick(pulled, puller, true);
+        // the lead's own pull, as before leads by mass: with massLeads on, a pig without AI held by a player counts as
+        // immovable and the player takes the whole pull (LeashPhysics.massFor), so this step would move the pig not at all
+        boolean massLeads = UlConfig.on(UlConfig.MASS_LEADS);
+        UlConfig.MASS_LEADS.set(false);
+        LeashPhysics.Tick step;
+        try {
+            step = LeashPhysics.tick(pulled, puller, true);
+        } finally {
+            UlConfig.MASS_LEADS.set(massLeads);
+        }
         Vec3 own = pulled.getDeltaMovement();
         double m = EntityScale.motion(pulled);
         Vec3 lead = new Vec3(own.x * m, own.y, own.z * m); // lead units, as in pullIsTheSameInRealBlocksAtAnySize

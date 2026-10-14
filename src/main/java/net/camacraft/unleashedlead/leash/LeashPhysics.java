@@ -42,7 +42,8 @@ import java.util.Map;
  *   (relative to the holder's own motion, so a moving holder drags it along).</li>
  * </ul>
  * Speed across the rope is never touched, so a mob hanging from a knot over a drop swings like a
- * pendulum and a boat on a lead arcs around its holder. At the snap distance (12) the lead breaks.
+ * pendulum and a boat on a lead arcs around its holder. At the snap distance (12) the lead breaks; an upgraded
+ * lead ({@link LeadTier}) stretches further first ({@link #breakDistance(Entity)}), and wrangles easier ({@link #wrangle}).
  *
  * <p>Resized entities (Pehkui, which Genesis bundles) lead like any other. Distances are
  * {@link LeashGeometry#span}s in real blocks (centre to centre, less what an enlarged body adds).
@@ -109,10 +110,30 @@ public final class LeashPhysics {
         return Double.isNaN(vb) ? UlConfig.num(UlConfig.FREE_LENGTH) : Math.max(vb - 1.0, 1.0);
     }
 
-    /** The snap distance of a normal-sized lead on {@code entity} (see {@link #freeLength(Entity)}). */
+    /**
+     * The snap distance of a normal-sized plain lead on {@code entity} (see {@link #freeLength(Entity)}). What the
+     * lead's own rules measure against (a tow rope goes taut 1.5 short of it); where an upgraded lead actually snaps
+     * is {@link #breakDistance(Entity)}.
+     */
     public static double snapDistance(Entity entity) {
-        double vb = VanillaBackport.present() ? VanillaBackport.snapDistance(entity) : Double.NaN;
+        // Vanilla Backport's answer for a tiered lead is its break distance (LeadTiers.vanillaBackportSnap): read the plain one
+        double vb = VanillaBackport.present() ? LeadTiers.plain(() -> VanillaBackport.snapDistance(entity)) : Double.NaN;
         return Double.isNaN(vb) ? UlConfig.num(UlConfig.SNAP_DISTANCE) : vb;
+    }
+
+    /**
+     * Where the normal-sized lead on {@code entity} snaps: {@link #snapDistance(Entity)} for a plain lead; an upgraded
+     * one ({@link LeadTier}) stretches its strength times as far past its free length first (iron at 15.5 instead of 12).
+     */
+    public static double breakDistance(Entity entity) {
+        double snap = snapDistance(entity);
+        double strength = LeadTiers.strength(entity);
+        return strength == 1.0 ? snap : LeadTiers.breakDistance(freeLength(entity), snap, strength);
+    }
+
+    /** Where the lead between {@code entity} and {@code holder} (null: a fence) snaps, sized for both ends. */
+    public static double breakDistance(Entity entity, @Nullable Entity holder) {
+        return breakDistance(entity) * LeadScale.reach(entity, holder);
     }
 
     /** The free length of the lead between {@code entity} and {@code holder} (null: a fence), sized for both ends. */
@@ -165,7 +186,7 @@ public final class LeashPhysics {
         Track track = track(entity, holder, a, h);
         double d = LeashGeometry.span(entity, a, holder, h);
         double reach = LeadScale.reach(entity, holder); // 1 unless both ends are small
-        if (d > snapDistance(entity) * reach) {
+        if (d > breakDistance(entity) * reach) {
             if (!entity.level().isClientSide) snap(entity, h);
             return new Tick(d, false, true, reach);
         }
@@ -296,9 +317,27 @@ public final class LeashPhysics {
 
     /** How far short of its snap distance a lead with mass at both ends goes taut as a tow rope (blocks, on a normal lead). */
     private static final double TOW_MARGIN = 1.5;
+    /** The most the tow rope changes how fast its ends part in one tick (blocks per tick, on a normal lead: 40 m/s). */
+    private static final double MAX_TOW_DV = 2.0;
 
-    /** How far around a holder the client looks for the leads it holds (blocks). */
-    private static final double HOLDER_SEARCH = 24.0;
+    /**
+     * How much of its weight {@code entity} puts against a taut lead by mass: 1 for anything dragged dead (a vehicle,
+     * a boat, a mob without AI, a sitting pet, a mob in the air, one that doesn't follow leads). A mob that walks after
+     * its holder, on the ground or swimming, counts {@code ledWeight} (0.3) when it is tamed or led by nature
+     * ({@link LeashTicker#ledByNature}: it is led, not dragged, and walks along at its holder's pace) and
+     * {@code untamedLedWeight} (1) when it isn't (the owner, 2026-10-13: "Untamed animals should still be difficult to
+     * wrangle"). An upgraded lead wrangles easier: the share is divided by the lead's strength squared (iron 1.5: by
+     * 2.25, diamond 2.5: by 6.25, netherite 4: by 16). With every mob at full weight a player leading a cow on a plain
+     * lead takes 90% of the pull and walks at 2.2 m/s, sprints at 0.6.
+     */
+    public static double wrangle(Entity entity) {
+        if (!LeashTicker.walksAfterLead(entity)) return 1.0;
+        if (!entity.onGround() && !entity.isInWater()) return 1.0; // hanging or flung: its whole weight
+        double share = UlConfig.num(LeashTicker.ledByNature(entity) ? UlConfig.LED_WEIGHT : UlConfig.UNTAMED_LED_WEIGHT);
+        double strength = LeadTiers.strength(entity);
+        return Math.min(1.0, share / (strength * strength));
+    }
+
 
     /**
      * A knot on a Valkyrien Skies ship: the ship, the knot's centre in the ship's own (shipyard) space,
@@ -353,6 +392,11 @@ public final class LeashPhysics {
      * its mass: it is moved by its share on the rider's client ({@link #clientHolderTick}).
      */
     static double massFor(Entity e) {
+        // a creative or spectating player is never pulled by what they lead: it just follows (the owner, 2026-10-13: "When
+        // I am in creative mode, an animal should not be able to pull me with the lead, especially when in fly mode")
+        if (e instanceof Player p && (p.isCreative() || p.isSpectator()) && UlConfig.on(UlConfig.CREATIVE_HOLDERS_HOLD)) {
+            return Double.POSITIVE_INFINITY;
+        }
         if (e instanceof VehicleLeash) {
             if (PhysicsOwnership.heldOutrightByOther(e, OWNER)) return Double.POSITIVE_INFINITY;
             return Math.max(Weights.massWithPassengersKg(e), MIN_MASS_KG);
@@ -399,8 +443,13 @@ public final class LeashPhysics {
         double reach = LeadScale.reach(entity, holder);
         double towAt = (snapDistance(entity) - TOW_MARGIN) * reach;
         if (d > towAt) dv = Math.min(dv, -Math.max(radial, 0.0) - (d - towAt));
+        // Never more than MAX_TOW_DV in one tick: an upgraded lead stretches up to 5 blocks past the tow length before it
+        // snaps, and taking all of that back in one tick threw a car at up to 40 m/s.
+        dv = Math.max(dv, -MAX_TOW_DV * reach);
         if (dv >= 0.0) return;
-        double me = massFor(entity);
+        // a led animal walking after its holder puts only part of its weight against the lead (ledWeight, less on
+        // an upgraded lead): it is led, not dragged dead
+        double me = massFor(entity) * wrangle(entity);
         double mh = knot != null ? knot.massKg() : massFor(holder);
         double entityShare;
         if (Double.isInfinite(mh)) entityShare = 1.0;
@@ -447,14 +496,35 @@ public final class LeashPhysics {
      */
     public static void clientHolderTick(@Nullable Player player) {
         if (player == null || !UlConfig.on(UlConfig.MASS_LEADS) || !UlConfig.on(UlConfig.PHYSICS)) return;
-        holderSide(player);
+        if (HOLDER_TICKS.fresh(player)) holderSide(player);
         for (Entity vehicle = player.getVehicle(); vehicle != null; vehicle = vehicle.getVehicle()) {
-            if (vehicle.isControlledByLocalInstance()) holderSide(vehicle);
+            if (vehicle.isControlledByLocalInstance() && HOLDER_TICKS.fresh(vehicle)) holderSide(vehicle);
+        }
+    }
+
+    /** The holders {@link #clientHolderTick} pulled, by the entity tick they were pulled on. */
+    private static final OncePerTick HOLDER_TICKS = new OncePerTick();
+
+    /**
+     * Lets a client-side pull act at most once per tick of the entity it moves. The client's tick event fires 20 times a
+     * second even while the game is paused or the level isn't ticking, but nothing moves then: a velocity change given
+     * each of those ticks piled up on the entity, so a car towing a cow on a taut lead, paused for a minute, was flung
+     * hundreds of blocks when the game went on (2026-10-12). An entity's {@code tickCount} only advances when its level
+     * ticks it, so a pull keyed to it happens once per real step, never while frozen.
+     */
+    public static final class OncePerTick {
+        private final Map<Entity, Integer> last = new MapMaker().weakKeys().makeMap();
+
+        /** Whether {@code entity} has been ticked since the last call that returned true for it. */
+        public boolean fresh(Entity entity) {
+            Integer before = last.put(entity, entity.tickCount);
+            return before == null || before != entity.tickCount;
         }
     }
 
     private static void holderSide(Entity holder) {
-        for (Entity entity : Leashes.leashedTo(holder, HOLDER_SEARCH)) {
+        // as far around the holder as the longest lead reaches (an upgraded one stretches past 24 blocks)
+        for (Entity entity : Leashes.leashedTo(holder, LeashRules.searchRadius())) {
             if (!byMass(entity, holder) || entity.level() != holder.level()) continue;
             Vec3 a = LeashGeometry.knownCentre(entity);
             Vec3 h = LeashGeometry.knownCentre(holder);
@@ -463,7 +533,7 @@ public final class LeashPhysics {
             double d = LeashGeometry.span(entity, a, holder, h);
             double reach = LeadScale.reach(entity, holder);
             double free = freeLength(entity) * reach;
-            if (d <= free || d > snapDistance(entity) * reach) continue;
+            if (d <= free || d > breakDistance(entity) * reach) continue;
             pullByMass(entity, holder, a, h, d, free, track, false, true);
         }
     }
@@ -528,8 +598,9 @@ public final class LeashPhysics {
      */
     private static void faceHolder(Entity entity, Vec3 a, Vec3 h, double reach) {
         if (entity.getControllingPassenger() instanceof Player) return;
-        boolean dragged = entity instanceof Boat
-                || (entity instanceof Mob mob && (mob.isNoAi() || !mob.onGround()));
+        // Any mob on a taut lead, on the ground too: one towed faster than it walks slid along sideways or backwards
+        // behind a car (2026-10-12), since only its own walking (which a taut lead stopped under Vanilla Backport) turned it.
+        boolean dragged = entity instanceof Boat || entity instanceof Mob;
         if (!dragged) return;
         double dx = h.x - a.x, dz = h.z - a.z;
         if (dx * dx + dz * dz < 0.25 * reach * reach) return;

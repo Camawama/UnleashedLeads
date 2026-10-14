@@ -1,5 +1,6 @@
 package net.camacraft.unleashedlead.tether;
 
+import net.camacraft.unleashedlead.leash.LeadTier;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtUtils;
@@ -34,6 +35,8 @@ public final class Tether {
     UUID carrier;
     /** Rope length: the distance between the knots when tied, plus the slack. NaN while carried. */
     double length = Double.NaN;
+    /** What the lead it was tied with is made of: an upgraded one holds a harder pull, and drops as itself. */
+    LeadTier tier = LeadTier.PLAIN;
 
     // ---- runtime, server thread
 
@@ -77,6 +80,10 @@ public final class Tether {
         return length;
     }
 
+    public LeadTier tier() {
+        return tier;
+    }
+
     public TetherPhysics.Cell cell() {
         return cell;
     }
@@ -102,6 +109,7 @@ public final class Tether {
         if (b != null) tag.put("B", NbtUtils.writeBlockPos(b));
         if (carrier != null) tag.putUUID("Carrier", carrier);
         if (!Double.isNaN(length)) tag.putDouble("Length", length);
+        if (tier != LeadTier.PLAIN) tag.putByte("Tier", (byte) tier.id);
         return tag;
     }
 
@@ -112,6 +120,7 @@ public final class Tether {
         if (tag.contains("B", 10)) t.b = NbtUtils.readBlockPos(tag.getCompound("B"));
         if (tag.hasUUID("Carrier")) t.carrier = tag.getUUID("Carrier");
         if (tag.contains("Length", 99)) t.length = tag.getDouble("Length");
+        t.tier = LeadTier.byId(tag.getByte("Tier"));
         if (t.b == null && t.carrier == null) return null; // neither tied nor carried: nothing to restore
         if (t.b != null) t.carrier = null;
         if (t.b != null && !(t.length > 0.0)) t.length = 1.0;
@@ -121,6 +130,7 @@ public final class Tether {
     @Override
     public String toString() {
         return "Tether#" + id + "[" + a.toShortString() + " -> "
-                + (b != null ? b.toShortString() : "carried by " + carrier) + ", length " + length + "]";
+                + (b != null ? b.toShortString() : "carried by " + carrier) + ", length " + length
+                + (tier != LeadTier.PLAIN ? ", " + tier : "") + "]";
     }
 }

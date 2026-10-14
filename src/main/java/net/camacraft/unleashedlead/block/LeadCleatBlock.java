@@ -1,12 +1,12 @@
 package net.camacraft.unleashedlead.block;
 
+import net.camacraft.unleashedlead.leash.LeadTier;
 import net.camacraft.unleashedlead.leash.LeashRules;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -74,7 +74,7 @@ public class LeadCleatBlock extends FaceAttachedHorizontalDirectionalBlock {
     @Override
     public InteractionResult use(BlockState state, Level level, BlockPos pos, Player player, InteractionHand hand, BlockHitResult hit) {
         if (level.isClientSide) {
-            return player.getItemInHand(hand).is(Items.LEAD) ? InteractionResult.SUCCESS : InteractionResult.PASS;
+            return LeadTier.isLead(player.getItemInHand(hand)) ? InteractionResult.SUCCESS : InteractionResult.PASS;
         }
         return LeashRules.useFence(player, level, pos, hand);
     }

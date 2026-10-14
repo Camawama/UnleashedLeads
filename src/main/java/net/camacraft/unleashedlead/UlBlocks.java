@@ -46,10 +46,16 @@ public final class UlBlocks {
         return state.is(BlockTags.FENCES) || state.is(LEAD_ANCHORS) || state.getBlock() instanceof LeadCleatBlock;
     }
 
+    /** After the lead: the upgraded leads ({@link UlItems}), then the cleat. */
     private static void onCreativeTabs(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
-            event.getEntries().putAfter(Items.LEAD.getDefaultInstance(), LEAD_CLEAT_ITEM.get().getDefaultInstance(),
-                    net.minecraft.world.item.CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+            Item after = Items.LEAD;
+            for (Item item : new Item[]{UlItems.IRON_LEAD.get(), UlItems.DIAMOND_LEAD.get(), UlItems.NETHERITE_LEAD.get(),
+                    LEAD_CLEAT_ITEM.get()}) {
+                event.getEntries().putAfter(after.getDefaultInstance(), item.getDefaultInstance(),
+                        net.minecraft.world.item.CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS);
+                after = item;
+            }
         }
     }
 }

@@ -45,6 +45,12 @@ public final class UlConfig {
     public static final ForgeConfigSpec.BooleanValue LEASH_VEHICLES;
     public static final ForgeConfigSpec.BooleanValue PULL_DRIVEN_VEHICLES;
     public static final ForgeConfigSpec.BooleanValue MASS_LEADS;
+    public static final ForgeConfigSpec.DoubleValue LED_WEIGHT;
+    public static final ForgeConfigSpec.DoubleValue LED_HURRY;
+    public static final ForgeConfigSpec.DoubleValue UNTAMED_LED_WEIGHT;
+    public static final ForgeConfigSpec.DoubleValue UNTAMED_TOWED_HURRY;
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> LED_BY_NATURE;
+    public static final ForgeConfigSpec.BooleanValue CREATIVE_HOLDERS_HOLD;
     public static final ForgeConfigSpec.BooleanValue MOB_TO_MOB;
     public static final ForgeConfigSpec.BooleanValue MOB_CHAINS;
     public static final ForgeConfigSpec.BooleanValue SHEARS_SNIP;
@@ -61,6 +67,9 @@ public final class UlConfig {
     public static final ForgeConfigSpec.DoubleValue TETHER_SWAY_DAMPING;
     public static final ForgeConfigSpec.DoubleValue TETHER_BREAKING_STRENGTH;
     public static final ForgeConfigSpec.DoubleValue TETHER_SLACK;
+    public static final ForgeConfigSpec.DoubleValue IRON_LEAD_STRENGTH;
+    public static final ForgeConfigSpec.DoubleValue DIAMOND_LEAD_STRENGTH;
+    public static final ForgeConfigSpec.DoubleValue NETHERITE_LEAD_STRENGTH;
 
     // ------------------------------------------------------------------ client
 
@@ -80,6 +89,9 @@ public final class UlConfig {
     public static final ForgeConfigSpec.IntValue ROPE_MAX_SIMULATED;
     public static final ForgeConfigSpec.ConfigValue<String> ROPE_COLOR;
     public static final ForgeConfigSpec.DoubleValue ROPE_STRIPE_SHADE;
+    public static final ForgeConfigSpec.ConfigValue<String> IRON_ROPE_COLOR;
+    public static final ForgeConfigSpec.ConfigValue<String> DIAMOND_ROPE_COLOR;
+    public static final ForgeConfigSpec.ConfigValue<String> NETHERITE_ROPE_COLOR;
 
     static {
         ForgeConfigSpec.Builder c = new ForgeConfigSpec.Builder();
@@ -130,6 +142,30 @@ public final class UlConfig {
                         "lead to a knot on a Valkyrien Skies ship pulls the ship at the knot. Fence knots in the world don't",
                         "move. Chains of mobs keep their own rules. Off: leads only pull the leashed entity, as before.")
                 .define("massLeads", true);
+        LED_WEIGHT = s.comment("How much of its weight a TAMED led animal (a pet, a tamed horse, donkey, mule or llama, or anything in",
+                        "ledByNature) puts against a taut lead (with massLeads), 0 to 1, walking after its holder on the ground or",
+                        "swimming: it is led rather than dragged. An upgraded lead wrangles easier: this is divided by its strength",
+                        "squared (iron 1.5: by 2.25, diamond: by 6.25, netherite: by 16). Vehicles, boats, mobs without AI, sitting",
+                        "pets and anything in the air always count their whole weight.")
+                .defineInRange("ledWeight", 0.3, 0.0, 1.0);
+        UNTAMED_LED_WEIGHT = s.comment("The same for an UNTAMED led animal (a cow, a pig, a wild horse): wrangling one on a plain lead is real",
+                        "effort, easier with every tier (divided by the lead's strength squared: a cow is 650 kg on a plain lead, 289",
+                        "on iron, 104 on diamond, 41 on netherite).")
+                .defineInRange("untamedLedWeight", 1.0, 0.0, 1.0);
+        LED_HURRY = s.comment("Tamed led animals keep pace with their holder: walking after it, one speeds up to the holder's speed, up to",
+                        "this many times its normal leash-follow speed (2 is most animals' panic speed), and keeps walking while the",
+                        "lead is taut. Tamed horses, donkeys, mules, llamas and camels keep up with a sprinting player whatever their",
+                        "own speed. Untamed ones walk at vanilla's pace and are dragged on a taut lead. 1 = vanilla's pace for all.")
+                .defineInRange("ledHurry", 2.5, 1.0, 8.0);
+        UNTAMED_TOWED_HURRY = s.comment("An untamed animal towed by a vehicle (a car is far stronger than a player) runs along rather than be",
+                        "dragged: it keeps walking on a taut lead, up to this many times its leash-follow speed. On a plain lead it",
+                        "still weighs its whole weight on the car. 1 = dragged like by a player.")
+                .defineInRange("untamedTowedHurry", 2.0, 1.0, 8.0);
+        LED_BY_NATURE = s.comment("Entities that are led like tamed animals even untamed: ids, #tags, wildcards or /regex/.")
+                .defineListAllowEmpty(List.of("ledByNature"),
+                        () -> List.of("minecraft:allay", "minecraft:camel", "vanillabackport:happy_ghast"), o -> o instanceof String);
+        CREATIVE_HOLDERS_HOLD = s.comment("A player in creative mode or spectating is never pulled by what they lead (by mass): it just follows.")
+                .define("creativeHoldersHold", true);
         s.pop();
 
         s.comment("Bedrock and 1.21 to 1.21.6 lead features.").push("features");
@@ -198,6 +234,21 @@ public final class UlConfig {
                 .defineInRange("slack", 0.5, 0.0, 16.0);
         s.pop();
 
+        s.comment("Upgraded leads, made at the smithing table with no template: lead + iron ingot, iron lead + diamond,",
+                "diamond lead + netherite ingot. They are leads in every way (same free length, pull and tow length) and",
+                "only harder to break. Each number is how much stronger than a plain lead: how far past its free length",
+                "the lead stretches before it snaps (a plain lead snaps 7 blocks past its 5 free, at 12; at 1.5 that is",
+                "5 + 7 x 1.5 = 15.5), and how hard a fence-to-fence rope of it on a ship may pull (tethers.breakingStrength",
+                "times this). A carried rope snaps that much later too, but the longest rope that can be tied stays the",
+                "snap distance.").push("upgradedLeads");
+        IRON_LEAD_STRENGTH = s.comment("Iron lead (snaps at 15.5 blocks by default).")
+                .defineInRange("ironStrength", 1.5, 1.0, 64.0);
+        DIAMOND_LEAD_STRENGTH = s.comment("Diamond lead (snaps at 22.5 blocks by default).")
+                .defineInRange("diamondStrength", 2.5, 1.0, 64.0);
+        NETHERITE_LEAD_STRENGTH = s.comment("Netherite lead (snaps at 33 blocks by default; the item also survives fire and lava).")
+                .defineInRange("netheriteStrength", 4.0, 1.0, 64.0);
+        s.pop();
+
         s.comment("Vanilla Backport compatibility.").push("vanillaBackport");
         GHAST_FACING_RESYNC = s.comment("Resend each happy ghast's facing to its watchers every 2 seconds, so a turn a client missed never",
                         "leaves its ghast (and the boat it carries) drawn crooked for long. One small packet per ghast.")
@@ -235,6 +286,12 @@ public final class UlConfig {
                 .define("color", "#7F664C");
         ROPE_STRIPE_SHADE = r.comment("Brightness of every other stripe, for vanilla's two-tone lead look (1 = no stripes).")
                 .defineInRange("stripeShade", 0.7, 0.0, 1.0);
+        IRON_ROPE_COLOR = r.comment("Colour of an iron lead's rope as #RRGGBB.")
+                .define("ironColor", "#A9ADB1");
+        DIAMOND_ROPE_COLOR = r.comment("Colour of a diamond lead's rope as #RRGGBB.")
+                .define("diamondColor", "#3FCFC0");
+        NETHERITE_ROPE_COLOR = r.comment("Colour of a netherite lead's rope as #RRGGBB.")
+                .define("netheriteColor", "#4A4043");
         r.pop();
 
         r.comment("Vanilla Backport compatibility.").push("vanillaBackport");
@@ -253,6 +310,15 @@ public final class UlConfig {
 
     public static boolean neverLeash(EntityType<?> type) {
         return NEVER_LEASH_MATCHER.matches(type);
+    }
+
+    @SuppressWarnings("deprecation")
+    private static final IdMatcher.Cached<EntityType<?>> LED_BY_NATURE_MATCHER =
+            IdMatcher.cached(BuiltInRegistries.ENTITY_TYPE, "ledByNature", LED_BY_NATURE::get);
+
+    /** Whether {@code type} is led like a tamed animal even untamed ({@code physics.ledByNature}). */
+    public static boolean ledByNature(EntityType<?> type) {
+        return LED_BY_NATURE_MATCHER.matches(type);
     }
 
     public static boolean on(ForgeConfigSpec.BooleanValue value) {

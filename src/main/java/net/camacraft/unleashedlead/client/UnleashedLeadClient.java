@@ -2,6 +2,7 @@ package net.camacraft.unleashedlead.client;
 
 import net.camacraft.unleashedlead.client.rope.ClientRopes;
 import net.camacraft.unleashedlead.leash.KnotMasses;
+import net.camacraft.unleashedlead.leash.LeadTiers;
 import net.camacraft.unleashedlead.leash.LeashPhysics;
 import net.camacraft.unleashedlead.leash.VehicleLeashes;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
@@ -24,9 +25,13 @@ public final class UnleashedLeadClient {
         if (event.phase != TickEvent.Phase.END) return;
         ClientRopes.tick();
         KnotMasses.clientTick();
-        VehicleLeashes.clientTick(net.minecraft.client.Minecraft.getInstance().player);
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        // Paused, nothing moves while this event still fires: pulls given then piled up and flung the car (2026-10-12).
+        // Both also act at most once per tick of what they move (LeashPhysics.OncePerTick), whatever stops the level.
+        if (mc.isPaused()) return;
+        VehicleLeashes.clientTick(mc.player);
         // the local player's own ends of leads by mass: held by a car it leads, or its car feeling what it tows
-        LeashPhysics.clientHolderTick(net.minecraft.client.Minecraft.getInstance().player);
+        LeashPhysics.clientHolderTick(mc.player);
     }
 
     private static void onRenderStage(RenderLevelStageEvent event) {
@@ -39,6 +44,7 @@ public final class UnleashedLeadClient {
             ClientRopes.clear();
             ClientTethers.clear();
             KnotMasses.clear();
+            LeadTiers.clearClient();
         }
     }
 }

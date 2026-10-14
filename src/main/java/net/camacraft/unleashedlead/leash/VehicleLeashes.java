@@ -87,8 +87,12 @@ public final class VehicleLeashes {
         while (vehicle != null && !(vehicle instanceof VehicleLeash)) vehicle = vehicle.getVehicle();
         if (vehicle == null || !vehicle.isControlledByLocalInstance()) return;
         Entity holder = Leashes.holder(vehicle);
-        if (holder != null) LeashPhysics.tick(vehicle, holder, true);
+        // once per tick of the car itself: pulls given while it stood still (paused) piled up and flung it
+        if (holder != null && CLIENT_TICKS.fresh(vehicle)) LeashPhysics.tick(vehicle, holder, true);
     }
+
+    /** The driven vehicle {@link #clientTick} pulled, by the vehicle tick it was pulled on. */
+    private static final LeashPhysics.OncePerTick CLIENT_TICKS = new LeashPhysics.OncePerTick();
 
     /** Keeps the lead in the vehicle's persistent data, which Forge saves with the entity. */
     private static void mirror(Entity vehicle, VehicleLeash leash) {

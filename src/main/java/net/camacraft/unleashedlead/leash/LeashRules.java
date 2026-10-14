@@ -19,7 +19,6 @@ import net.minecraft.world.entity.decoration.LeashFenceKnotEntity;
 import net.minecraft.world.entity.monster.Enemy;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.gameevent.GameEvent;
 import net.minecraft.world.phys.AABB;
@@ -42,8 +41,18 @@ import java.util.function.Supplier;
  * changes anything, the client just predicts the arm swing.
  */
 public final class LeashRules {
-    /** How far from a holder to look for what it holds; past any snap distance, so nothing is missed. */
+    /** How far from a holder to look for what it holds, at least; past a plain lead's snap distance, so nothing is missed. */
     public static final double SEARCH_RADIUS = 20.0;
+
+    /**
+     * How far from a holder to look for what it holds: past the longest lead can get ({@link LeadTiers#longestReach}:
+     * a netherite lead stretches to 33 blocks), with the same 8 blocks to spare a plain lead had, never less than
+     * {@link #SEARCH_RADIUS}. A knot that only looked 20 blocks out took itself for empty and dropped a stretched
+     * upgraded lead.
+     */
+    public static double searchRadius() {
+        return Math.max(SEARCH_RADIUS, LeadTiers.longestReach() + 8.0);
+    }
 
     private LeashRules() {}
 
@@ -87,21 +96,23 @@ public final class LeashRules {
             return InteractionResult.sidedSuccess(!server);
         }
 
-        // 4. A lead ties it to you; one tied to a knot or a mob is taken over (1.21.6), and one in a
-        // chain of mobs brings the chain along (mobChains).
-        if (stack.is(Items.LEAD) && Leashes.isLeashable(target) && (Leashes.refused(target)
+        // 4. A lead (of any tier) ties it to you; one tied to a knot or a mob is taken over (1.21.6), and one
+        // in a chain of mobs brings the chain along (mobChains).
+        LeadTier lead = LeadTier.of(stack);
+        if (lead != null && Leashes.isLeashable(target) && (Leashes.refused(target)
                 || Leashes.heldByOtherPlayer(target, player) || (server && !mayGrab(player, target)))) {
             // Refused outright, and nobody else may tie it either: vanilla's own lead handling, or
             // Vanilla Backport's, whose canBeLeashed no longer refuses an entity already leashed
             // and would let a lead take it from another player.
             return InteractionResult.FAIL;
         }
-        if (stack.is(Items.LEAD) && canAttach(player, target)) {
+        if (lead != null && canAttach(player, target)) {
             if (server) {
-                ChainTake chain = takeChain(player, target);
+                ChainTake chain = takeChain(player, target, lead);
                 if (chain == ChainTake.NONE) {
-                    if (Leashes.holder(target) != null) Leashes.detach(target, true);
+                    if (Leashes.holder(target) != null) Leashes.detach(target, true); // drops the old lead as itself
                     Leashes.attach(target, player);
+                    LeadTiers.set(target, lead);
                 }
                 // a chain you already held just changed hands: your lead moved, no new one is used
                 if (chain != ChainTake.MOVED && !player.getAbilities().instabuild) stack.shrink(1);
@@ -129,9 +140,9 @@ public final class LeashRules {
         if (apply && !mayGrab(player, target)) return 0;
         Vec3 targetCentre = LeashGeometry.centre(target);
         int moved = 0;
-        for (Entity e : Leashes.leashedTo(player, SEARCH_RADIUS)) {
+        for (Entity e : Leashes.leashedTo(player, searchRadius())) {
             if (e == target || Leashes.wouldLoop(e, target)) continue;
-            if (LeashGeometry.span(e, LeashGeometry.centre(e), target, targetCentre) > LeashPhysics.snapDistance(e, target)) continue;
+            if (LeashGeometry.span(e, LeashGeometry.centre(e), target, targetCentre) > LeashPhysics.breakDistance(e, target)) continue;
             if (apply) Leashes.attach(e, target);
             moved++;
         }
@@ -169,15 +180,27 @@ public final class LeashRules {
      * hang from the mob below, so it now leads the chain and nothing is dropped. A mob can be held
      * by only one thing, so this is the only way to hold a chain by any mob of it. Only for a
      * chain that hangs from nothing or from you; one tied to a fence or held by someone else is
-     * taken over as before (just this mob, its old lead dropped).
+     * taken over as before (just this mob, its old lead dropped). Each lead keeps its tier ({@link LeadTiers}): the
+     * lead that hung from a mob is now kept by the mob below it, and {@code target} gets the new lead
+     * ({@code tier}), or your own lead when it moved.
      */
-    public static ChainTake takeChain(Player player, Entity target) {
+    public static ChainTake takeChain(Player player, Entity target, LeadTier tier) {
         List<Entity> path = chainToTake(player, target);
         if (path == null) return ChainTake.NONE;
-        boolean yours = Leashes.holder(path.get(path.size() - 1)) == player;
+        int last = path.size() - 1;
+        boolean yours = Leashes.holder(path.get(last)) == player;
+        LeadTier[] was = new LeadTier[path.size()];
+        for (int i = 0; i <= last; i++) was[i] = LeadTiers.of(path.get(i));
         Leashes.attach(target, player);
         for (int i = 1; i < path.size(); i++) Leashes.attach(path.get(i), path.get(i - 1));
+        for (int i = 1; i < path.size(); i++) LeadTiers.set(path.get(i), was[i - 1]);
+        LeadTiers.set(target, yours ? was[last] : tier);
         return yours ? ChainTake.MOVED : ChainTake.TAKEN;
+    }
+
+    /** As {@link #takeChain(Player, Entity, LeadTier)} with a plain lead. */
+    public static ChainTake takeChain(Player player, Entity target) {
+        return takeChain(player, target, LeadTier.PLAIN);
     }
 
     /**
@@ -205,10 +228,13 @@ public final class LeashRules {
         Entity current = mob.getLeashHolder();
         if (current == null) return mob.canBeLeashed(player);
         if (mob.level().isClientSide) return !(mob instanceof Enemy);
-        mob.dropLeash(false, false); // no packet, no item: undone on the next line
-        boolean accepts = mob.canBeLeashed(player);
-        mob.setLeashedTo(current, false);
-        return accepts;
+        boolean[] accepts = new boolean[1];
+        LeadTiers.keep(() -> {
+            mob.dropLeash(false, false); // no packet, no item, the lead keeps its tier: undone on the next line
+            accepts[0] = mob.canBeLeashed(player);
+            mob.setLeashedTo(current, false);
+        });
+        return accepts[0];
     }
 
     // ------------------------------------------------------------------ shears
@@ -216,7 +242,7 @@ public final class LeashRules {
     /** Whether shears on {@code target} would cut anything {@code player} may cut. */
     public static boolean hasSnippable(Player player, Entity target) {
         boolean own = Leashes.holder(target) != null && !Leashes.heldByOtherPlayer(target, player);
-        return own || Leashes.holdsAny(target, SEARCH_RADIUS) || hasRopes(target);
+        return own || Leashes.holdsAny(target, searchRadius()) || hasRopes(target);
     }
 
     /** A knot with fence-to-fence ropes on it (server side; the client doesn't keep them per knot). */
@@ -240,7 +266,7 @@ public final class LeashRules {
             Leashes.detach(target, true);
             cut++;
         }
-        for (Entity e : Leashes.leashedTo(target, SEARCH_RADIUS)) {
+        for (Entity e : Leashes.leashedTo(target, searchRadius())) {
             Leashes.detach(e, true);
             cut++;
         }
@@ -262,7 +288,7 @@ public final class LeashRules {
     public static boolean dispenserSnip(ServerLevel level, BlockPos pos) {
         if (!UlConfig.on(UlConfig.DISPENSER_SHEARS)) return false;
         List<Entity> candidates = level.getEntities((Entity) null, new AABB(pos),
-                e -> e.isAlive() && (Leashes.holder(e) != null || Leashes.holdsAny(e, SEARCH_RADIUS) || hasRopes(e)));
+                e -> e.isAlive() && (Leashes.holder(e) != null || Leashes.holdsAny(e, searchRadius()) || hasRopes(e)));
         for (Entity e : candidates) {
             if (snip(e, null) > 0) return true;
         }
@@ -370,7 +396,7 @@ public final class LeashRules {
         // Nothing to tie, nothing taken: vanilla takes the knot down (its ropes drop with it).
         knot.discard();
         if (player.getAbilities().instabuild) {
-            for (Entity e : Leashes.leashedTo(knot, SEARCH_RADIUS)) Leashes.detach(e, false);
+            for (Entity e : Leashes.leashedTo(knot, searchRadius())) Leashes.detach(e, false);
         }
         knot.gameEvent(GameEvent.BLOCK_ATTACH, player);
         return InteractionResult.CONSUME;
@@ -402,7 +428,7 @@ public final class LeashRules {
         }
         if (UlConfig.on(UlConfig.KNOT_RULES) && knot.tickCount > EMPTY_KNOT_GRACE
                 && knot.tickCount % 20 == 0 && LeashGeometry.placed(knot)
-                && !Leashes.holdsAny(knot, SEARCH_RADIUS) && !hasRopes(knot)) {
+                && !Leashes.holdsAny(knot, searchRadius()) && !hasRopes(knot)) {
             knot.dropItem(null);
             knot.discard();
             return true;
@@ -420,8 +446,8 @@ public final class LeashRules {
     public static int collect(Player player, LeashFenceKnotEntity knot) {
         Vec3 at = LeashGeometry.centre(player);
         int taken = 0, left = 0;
-        for (Entity e : Leashes.leashedTo(knot, SEARCH_RADIUS)) {
-            if (LeashGeometry.span(e, LeashGeometry.centre(e), player, at) <= LeashPhysics.snapDistance(e, player) && !Leashes.refused(e)) {
+        for (Entity e : Leashes.leashedTo(knot, searchRadius())) {
+            if (LeashGeometry.span(e, LeashGeometry.centre(e), player, at) <= LeashPhysics.breakDistance(e, player) && !Leashes.refused(e)) {
                 Leashes.attach(e, player);
                 taken++;
             } else {
@@ -445,8 +471,8 @@ public final class LeashRules {
 
     /** The entities {@code player} holds whose lead would reach {@code point} without snapping. */
     private static List<Entity> heldWithin(Player player, Vec3 point) {
-        List<Entity> held = Leashes.leashedTo(player, SEARCH_RADIUS);
-        held.removeIf(e -> LeashGeometry.span(e, LeashGeometry.centre(e), null, point) > LeashPhysics.snapDistance(e, null));
+        List<Entity> held = Leashes.leashedTo(player, searchRadius());
+        held.removeIf(e -> LeashGeometry.span(e, LeashGeometry.centre(e), null, point) > LeashPhysics.breakDistance(e, null));
         return held;
     }
 
@@ -470,7 +496,7 @@ public final class LeashRules {
     public static int fireworkBoost(Player player) {
         if (!(player.level() instanceof ServerLevel level)) return 0;
         int broken = 0;
-        for (Entity e : Leashes.leashedTo(player, SEARCH_RADIUS * 2)) {
+        for (Entity e : Leashes.leashedTo(player, searchRadius() * 2)) {
             Leashes.detach(e, true);
             broken++;
         }

@@ -3,12 +3,13 @@ package net.camacraft.unleashedlead.client.rope;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import net.camacraft.camafy.config.ConfigUtil;
 import net.camacraft.camafy.util.color.Argb;
 import net.camacraft.unleashedlead.UlConfig;
 import net.camacraft.unleashedlead.client.ClientTethers;
 import net.camacraft.unleashedlead.compat.VanillaBackport;
 import net.camacraft.unleashedlead.leash.LeadScale;
+import net.camacraft.unleashedlead.leash.LeadTier;
+import net.camacraft.unleashedlead.leash.LeadTiers;
 import net.camacraft.unleashedlead.leash.LeashGeometry;
 import net.camacraft.unleashedlead.leash.LeashPhysics;
 import net.camacraft.unleashedlead.leash.Leashes;
@@ -59,6 +60,8 @@ public final class ClientRopes {
     private static final BlockCollider COLLIDER = new BlockCollider();
     private static final RopeSolver.Settings SETTINGS = new RopeSolver.Settings();
     private static final RopeMesh MESH = new RopeMesh();
+    /** Red, green, blue per {@link LeadTier}, refreshed each frame from the client config. */
+    private static final float[] COLORS = new float[LeadTier.values().length * 3];
     /** Points in a rope drawn as a fixed curve. */
     private static final int STATIC_POINTS = 10;
     /** An end moving further than this in one tick is a teleport: the rope is laid out afresh. */
@@ -86,6 +89,8 @@ public final class ClientRopes {
         boolean tether;
         /** A tied fence-to-fence rope's length (NaN while carried: it hangs like a lead). */
         double tetherLength = Double.NaN;
+        /** What the lead is made of: its colour ({@link LeadTier#ropeColor}). */
+        LeadTier tier = LeadTier.PLAIN;
         long seen;
         boolean simulated;
         RopeSolver solver;
@@ -196,7 +201,9 @@ public final class ClientRopes {
         }
 
         void render(ClientLevel level, VertexConsumer out, Matrix4f pose, Vec3 cam, float partialTick, Frustum frustum,
-                    double halfWidth, float r, float g, float bl, float stripe) {
+                    double halfWidth, float[] colors, float stripe) {
+            int at = tier.ordinal() * 3;
+            float r = colors[at], g = colors[at + 1], bl = colors[at + 2];
             Vec3 a = holderEnd(partialTick), b = entityEnd(partialTick);
             double[] points;
             int n;
@@ -271,6 +278,7 @@ public final class ClientRopes {
                 rope.holder = holder;
                 rope.index = i;
                 rope.quad = quad;
+                rope.tier = LeadTiers.of(entity);
                 rope.seen = tickStamp;
                 live.add(rope);
             }
@@ -292,6 +300,7 @@ public final class ClientRopes {
             rope.holder = other;
             rope.tether = true;
             rope.tetherLength = entry.length();
+            rope.tier = LeadTier.byId(entry.tier());
             rope.seen = tickStamp;
             live.add(rope);
         }
@@ -323,8 +332,13 @@ public final class ClientRopes {
         if (level == null || ROPES.isEmpty()) return;
         boolean ropes = UlConfig.on(UlConfig.ROPE_RENDERING);
         double halfWidth = (ropes ? UlConfig.num(UlConfig.ROPE_THICKNESS) : 0.025) * 0.5;
-        int color = Argb.parse(ConfigUtil.getOr(UlConfig.ROPE_COLOR), 0xFF7F664C);
-        float r = Argb.red(color) / 255.0F, g = Argb.green(color) / 255.0F, b = Argb.blue(color) / 255.0F;
+        // each lead's colour by what it is made of (plain, iron, diamond, netherite)
+        for (LeadTier tier : LeadTier.values()) {
+            int color = tier.ropeColor(), c = tier.ordinal() * 3;
+            COLORS[c] = Argb.red(color) / 255.0F;
+            COLORS[c + 1] = Argb.green(color) / 255.0F;
+            COLORS[c + 2] = Argb.blue(color) / 255.0F;
+        }
         float stripe = (float) UlConfig.num(UlConfig.ROPE_STRIPE_SHADE);
 
         MultiBufferSource.BufferSource buffers = mc.renderBuffers().bufferSource();
@@ -332,7 +346,7 @@ public final class ClientRopes {
         Matrix4f pose = poseStack.last().pose();
         for (Rope rope : ROPES.values()) {
             if (!rope.entity.isAlive() || !rope.holder.isAlive()) continue;
-            rope.render(level, out, pose, cam, partialTick, frustum, halfWidth, r, g, b, stripe);
+            rope.render(level, out, pose, cam, partialTick, frustum, halfWidth, COLORS, stripe);
         }
         buffers.endBatch(RopeRenderType.ROPE);
     }

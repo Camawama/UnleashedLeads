@@ -16,7 +16,6 @@ import net.minecraft.world.entity.decoration.LeashFenceKnotEntity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.FireworkRocketItem;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.TickEvent;
@@ -67,9 +66,13 @@ public final class LeashEvents {
         }
     }
 
-    /** Tell a player who starts seeing a leashed boat who holds it (our boat model only), or a knot its ropes. */
+    /**
+     * Tell a player who starts seeing a leashed boat who holds it (our boat model only), or a knot its ropes; and
+     * anything with an upgraded lead what its lead is made of.
+     */
     private static void onStartTracking(PlayerEvent.StartTracking event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        LeadTiers.sendTo(player, event.getTarget());
         if (event.getTarget() instanceof BoatLeash leash) {
             BoatLeashes.sendTo(player, event.getTarget(), leash);
         } else if (event.getTarget() instanceof LeashFenceKnotEntity knot) {
@@ -115,9 +118,10 @@ public final class LeashEvents {
         leash.ul$setPendingTag(null);
         if (reason == Entity.RemovalReason.CHANGED_DIMENSION) return;
         Vec3 at = entity.position();
+        LeadTier tier = LeadTiers.of(entity); // an upgraded lead drops as itself
         MinecraftServer server = level.getServer();
         server.tell(new TickTask(server.getTickCount(), () -> {
-            ItemEntity lead = new ItemEntity(level, at.x, at.y + 0.2, at.z, new ItemStack(Items.LEAD));
+            ItemEntity lead = new ItemEntity(level, at.x, at.y + 0.2, at.z, new ItemStack(tier.item()));
             lead.setDefaultPickUpDelay();
             level.addFreshEntity(lead);
         }));

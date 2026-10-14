@@ -3,5 +3,8 @@
   "subtitles.unleashedlead.item.lead.untied": "Lead untied",
   "subtitles.unleashedlead.item.lead.break": "Lead snaps",
   "subtitles.unleashedlead.item.shears.snip": "Shears snip",
-  "block.unleashedlead.lead_cleat": "Lead Cleat"
+  "block.unleashedlead.lead_cleat": "Lead Cleat",
+  "item.unleashedlead.iron_lead": "Iron Lead",
+  "item.unleashedlead.diamond_lead": "Diamond Lead",
+  "item.unleashedlead.netherite_lead": "Netherite Lead"
 }

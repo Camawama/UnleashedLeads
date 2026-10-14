@@ -21,7 +21,8 @@ public final class UlMixinPlugin implements IMixinConfigPlugin {
     /** Only without Vanilla Backport. */
     private static final Set<String> WITHOUT_VB = Set.of("PathfinderMobMixin", "BoatMixin");
     /** Only with Vanilla Backport. */
-    private static final Set<String> WITH_VB = Set.of("VbLeashableMixin", "VbHappyGhastSyncMixin", "client.VbLeashFeatureRendererMixin");
+    private static final Set<String> WITH_VB = Set.of("VbLeashableMixin", "VbHappyGhastSyncMixin", "VbHappyGhastLeadTierMixin",
+            "client.VbLeashFeatureRendererMixin");
     /** Only with Automobility. */
     private static final Set<String> WITH_AUTOMOBILITY = Set.of("compat.AutomobileLeashMixin");
 
