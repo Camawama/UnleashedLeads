@@ -14,7 +14,7 @@ Bedrock Edition's leads on Java Edition, for Forge 1.20.1. Also backports the le
 - **Package:** `net.camacraft.unleashedlead`
 - **Author:** Camawama
 - **Licence:** GPL-3.0 (see `LICENSE.txt`, the same licence as Camafy). To change it, edit `mod_license` in `gradle.properties`, replace `LICENSE.txt`, and update this line.
-- **Requires:** Minecraft 1.20.1, Forge 47.4 or later, and [Camafy](../../CAMAFY) 0.1.23 or later (below 0.2).
+- **Requires:** Minecraft 1.20.1, Forge 47.4 or later, and [Camafy](https://www.curseforge.com/minecraft/mc-mods/camafy) 0.1.23 or later (below 0.2).
 - **Sides:** both. The server runs the leash physics and rules. The client draws the rope. Both sides need the mod.
 
 ## What it does
