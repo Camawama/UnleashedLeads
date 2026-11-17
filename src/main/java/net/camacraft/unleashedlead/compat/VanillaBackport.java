@@ -64,7 +64,10 @@ public final class VanillaBackport {
         return defaultsFailed;
     }
 
-    private static final String HAPPY_GHAST = "com.blackgear.vanillabackport.common.level.entities.happyghast.HappyGhast";
+    /** The happy ghast's class in Vanilla Backport 1.2 and in 1.1. */
+    private static final String[] HAPPY_GHAST = {
+            "com.blackgear.vanillabackport.common.level.entities.mob.animal.happy_ghast.HappyGhast",
+            "com.blackgear.vanillabackport.common.level.entities.happyghast.HappyGhast"};
     @Nullable private static volatile Class<?> happyGhast;
     private static volatile boolean happyGhastLooked;
 
@@ -73,10 +76,17 @@ public final class VanillaBackport {
         if (!happyGhastLooked) {
             happyGhastLooked = true;
             if (present()) {
-                try {
-                    happyGhast = Class.forName(HAPPY_GHAST, false, VanillaBackport.class.getClassLoader());
-                } catch (Throwable t) {
-                    UnleashedLead.LOGGER.info("Vanilla Backport's happy ghast not found at {}; its facing fixes stay off", HAPPY_GHAST);
+                for (String name : HAPPY_GHAST) {
+                    try {
+                        happyGhast = Class.forName(name, false, VanillaBackport.class.getClassLoader());
+                        break;
+                    } catch (Throwable t) {
+                        // the other Vanilla Backport version's package
+                    }
+                }
+                if (happyGhast == null) {
+                    UnleashedLead.LOGGER.info("Vanilla Backport's happy ghast not found at {}; its facing fixes stay off",
+                            String.join(" or ", HAPPY_GHAST));
                 }
             }
         }

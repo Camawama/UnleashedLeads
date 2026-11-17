@@ -3,6 +3,11 @@ All notable changes to Unleashed Lead are documented in this file.
 The format is based on Keep a Changelog (https://keepachangelog.com/en/1.0.0/),
 and this project adheres to Semantic Versioning (https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-11-17
+
+### Fixed
+- Vanilla Backport 1.2 moved its happy ghast to `common.level.entities.mob.animal.happy_ghast`, so the ghast's lead tier (`VbHappyGhastLeadTierMixin`) and its facing fixes (`compat.VanillaBackport.isHappyGhast`) stood down without an error. Both name the 1.1 and the 1.2 class now.
+
 ## [Unreleased]
 
 ### Changed
